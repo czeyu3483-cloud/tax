@@ -155,7 +155,8 @@ def test_redirect_handler_refuses_to_forward_credentials():
 
 
 @pytest.mark.parametrize("raw,code", [(b"not json", "invalid_response"),
-                                     (b"x" * (MAX_RESPONSE_BYTES + 1), "response_too_large")])
+                                     (b"x" * (MAX_RESPONSE_BYTES + 1), "response_too_large")],
+                         ids=["invalid-json", "oversized-response"])
 def test_response_validation_is_bounded(monkeypatch, raw, code):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
     with pytest.raises(DeepSeekSearchError) as caught:

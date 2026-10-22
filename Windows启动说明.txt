@@ -1,0 +1,54 @@
+小弛 Windows 使用说明
+
+启动
+1. 双击本目录的 XiaochiLauncher.exe。
+2. 启动器自动启动后台服务，准备好后打开浏览器。
+3. 默认使用 http://127.0.0.1:8000；如果端口被占用，自动选择 8001–8099。
+4. 保持启动器窗口打开；点击“停止”或关闭窗口会停止本次启动的服务。
+5. EXE 必须与 src 文件夹保持在同一个目录。它是本地环境的启动器，不是可单独复制到其他电脑运行的完整安装包。
+
+导入 API Key
+点击启动器中的“编辑 API Key”，在记事本中填写仓库根目录的 .env：
+
+DEEPSEEK_API_KEY=你的真实DeepSeek密钥
+FISH_AUDIO_API_KEY=你的真实Fish密钥
+
+DeepSeek 密钥申请：https://platform.deepseek.com/api_keys
+Fish 密钥说明：https://docs.fish.audio/developer-guide/getting-started/api-key
+只用文字聊天和搜索时，Fish 一行留空即可。不要把说明文字作为密钥。
+保存文件后，在启动器中点击“停止”，再点击“启动”。
+.env 已被 Git 忽略，不要上传或分享它。不要把 Key 发到聊天里。
+已有系统环境变量优先于 .env；若替换 Key 无效，请检查同名环境变量。
+
+环境
+已按 src/uv.lock 安装 Python 3.12.15 和锁定依赖，另含开发测试和旧版 .xls 支持。
+补充了 Windows 必需的 tzdata 时区依赖，并更新锁文件。
+Python 环境：src\.venv\Scripts\python.exe
+本地 Python 安装：.local\python
+uv 工具：.local\bin\uv.exe
+无需激活 Conda，不需要 Node.js、Docker 或本地大模型。
+在仓库目录的 PowerShell 手动启动：
+.\src\.venv\Scripts\python.exe -m src.main --host 127.0.0.1 --port 8000
+
+如果移动整个项目目录，请先运行 scripts\repair-environment.ps1 重新创建虚拟环境。
+重新编译启动器：powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-launcher.ps1
+源码：scripts\windows-launcher.cs
+启动日志：.local\launcher.log
+日志、对话和上传材料可能包含业务内容，请勿直接公开。
+
+可选语音
+Fish Key 用于回答朗读。麦克风识别需要另一个 one2one-education 项目及 SenseVoice 模型。
+上游仓库没有附带这些文件，本次未配置语音输入。详见 README.zh-CN.md。
+
+验证
+启动器 --self-test 已验证后端 /api/config 返回 200，并停止其启动的进程。
+Windows 兼容修正后，全部 220 项离线测试通过（2 条上游弃用警告）。
+未配置真实密钥，因此模型回答、搜索和 Fish 朗读尚未进行在线验证。
+填好 Key 后，可问：“含税金额1130元，税率13%，请计算不含税金额和税额。”
+预期为 1000 元和 130 元；再另问一个政策问题验证联网检索。
+
+GitHub 副本
+原仓库：https://github.com/SegemiPL/xiaochi
+目标仓库：https://github.com/czeyu3483-cloud/tax
+上传需要目标账号的 GitHub 登录授权；具体上传状态以交付时的说明为准。
+不要上传 .env、.local、src/.venv、src/workspace 或 src/reports。

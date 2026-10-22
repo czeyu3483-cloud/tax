@@ -116,4 +116,4 @@ def test_back_prompt_truncates_long_results_and_points_to_file(monkeypatch, tmp_
     agent._truncated = False
     out = agent.get_back_prompt()
     assert 'result truncated at 8000 chars' in out
-    assert 'workspace/test-run/sub_agents/routing_subagent_result.md' in out
+    assert 'workspace/test-run/sub_agents/routing_subagent_result.md' in out.replace('\\', '/')
