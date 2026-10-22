@@ -30,7 +30,7 @@ def transcribe(path):
     base = settings()['asr_url'].rstrip('/')
     parsed = urlsplit(base)
     if parsed.scheme != 'http' or parsed.hostname not in {'127.0.0.1', 'localhost', '::1'}:
-        raise VoiceError('INVALID_CONFIG', 'ASR 地址必须是本机 HTTP 服务。')
+        raise VoiceError('INVALID_CONFIG', '语音识别服务地址配置不符合本机服务要求，请联系系统维护人员。')
     request = Request(base + '/api/asr', data=output.getvalue(), headers={
         'Content-Type': 'audio/wav', 'X-Voice-Lab': '1'}, method='POST')
     try:
@@ -40,9 +40,9 @@ def transcribe(path):
     except HTTPError as error:
         code = error.code
         error.close()
-        raise VoiceError('ASR_FAILED', f'本机识别失败（HTTP {code}），请检查录音或稍后重试。') from None
+        raise VoiceError('ASR_FAILED', f'语音识别失败（状态码 {code}），请检查录音后重试。') from None
     except (URLError, TimeoutError, OSError):
-        raise VoiceError('ASR_UNAVAILABLE', '本机 ASR 未启动，请运行语音文档中的启动命令。') from None
+        raise VoiceError('ASR_UNAVAILABLE', '本机语音识别服务尚未启动，请联系系统维护人员。') from None
 
 
 def plain_text(text):
@@ -65,12 +65,12 @@ def final_answer(history, turn, conclusion_only=True):
         elif turns:
             turns[-1].append(message)
     if not isinstance(turn, int) or not 0 <= turn < len(turns):
-        raise VoiceError('NO_REPLY', '请等待本轮回答完成后再朗读。', 422)
+        raise VoiceError('NO_REPLY', '请等待本轮答复完成后再朗读。', 422)
     messages = turns[turn]
     if (not messages or messages[-1].get('role') != 'assistant'
             or messages[-1].get('function_call') or messages[-1].get('tool_calls')
             or messages[-1].get('name') not in (None, '', '3wagent')):
-        raise VoiceError('NO_REPLY', '请等待本轮回答完成后再朗读。', 422)
+        raise VoiceError('NO_REPLY', '请等待本轮答复完成后再朗读。', 422)
     text = latest_reply(messages)
     if not conclusion_only:
         return text
@@ -102,7 +102,7 @@ def speech_chunks(text):
     """Keep the first sentence separate so speculative work stops there."""
     text = plain_text(text)
     if not 1 <= len(text) <= 12000 or not any(c.isalnum() for c in text):
-        raise VoiceError('INVALID_TEXT', '结论需为 1–12000 字，长回答请让模型简要总结。', 422)
+        raise VoiceError('INVALID_TEXT', '朗读内容须为 1–12000 字，超出时请先生成答复摘要。', 422)
     sentences = re.findall(r'[^。！？!?；;\n]+[。！？!?；;\n]*', text)
     parts = [sentence[offset:offset + 100]
              for sentence in sentences for offset in range(0, len(sentence), 100)]
@@ -137,7 +137,7 @@ def latest_reply(history):
                 content = '\n'.join(x.get('text', '') for x in content if isinstance(x, dict))
             if plain_text(content):
                 return plain_text(content)
-    raise VoiceError('NO_REPLY', '还没有已完成的主 Agent 回复。', 422)
+    raise VoiceError('NO_REPLY', '暂无可朗读的完整答复，请待答复完成后重试。', 422)
 
 
 def synthesize(text, rate=1.0):
@@ -145,7 +145,7 @@ def synthesize(text, rate=1.0):
     if not 1 <= len(text) <= 2000 or not any(c.isalnum() for c in text):
         raise VoiceError('INVALID_TEXT', '请选择 1–2000 字的内容朗读，长报告请分段。', 422)
     if not 0.75 <= rate <= 1.5:
-        raise VoiceError('INVALID_RATE', '语速范围是 0.75–1.5。', 422)
+        raise VoiceError('INVALID_RATE', '朗读语速须设置为 0.75–1.5 倍速。', 422)
     config = settings()
     voice = {'reference_id': config['voice_id'], 'name': config['voice_name']}
     chunks = []

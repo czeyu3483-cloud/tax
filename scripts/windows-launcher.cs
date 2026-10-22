@@ -23,27 +23,27 @@ class XiaochiLauncher : Form
 
     XiaochiLauncher()
     {
-        Text = "小弛 · 快速启动";
+        Text = "小弛 · 系统启动";
         ClientSize = new Size(580, 245);
         Font = new Font("Microsoft YaHei UI", 10);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        var title = new Label { Text = "小弛税务助手", Location = new Point(24, 20), AutoSize = true, Font = new Font(Font.FontFamily, 18, FontStyle.Bold) };
+        var title = new Label { Text = "小弛政务业务辅助系统", Location = new Point(24, 20), AutoSize = true, Font = new Font(Font.FontFamily, 18, FontStyle.Bold) };
         Controls.Add(title);
         status.Location = new Point(24, 70); status.Size = new Size(530, 48); Controls.Add(status);
-        AddButton("启动", 24, delegate { TryStart(); });
-        AddButton("停止", 130, delegate { Stop(); status.Text = "服务已停止。"; });
-        AddButton("打开网页", 236, delegate { if (server != null && !server.HasExited && Healthy()) Open(Url); });
-        AddButton("编辑 API Key", 342, delegate { EditEnv(); });
-        var note = new Label { Text = "修改密钥后请停止并重新启动。关闭此窗口也会停止服务。\n首次使用请填写 DeepSeek Key；Fish Key 为可选朗读功能。", Location = new Point(24, 176), Size = new Size(540, 55) };
+        AddButton("启动服务", 24, delegate { TryStart(); });
+        AddButton("停止服务", 130, delegate { Stop(); status.Text = "服务已停止。"; });
+        AddButton("进入系统", 236, delegate { if (server != null && !server.HasExited && Healthy()) Open(Url); });
+        AddButton("接口密钥配置", 342, delegate { EditEnv(); });
+        var note = new Label { Text = "接口密钥修改后须重新启动服务。关闭本窗口将停止服务。\n首次使用须配置 DeepSeek 密钥；启用朗读须另行配置 Fish 密钥。", Location = new Point(24, 176), Size = new Size(540, 55) };
         Controls.Add(note);
         timer.Interval = 700;
         timer.Tick += delegate {
             if (server == null) return;
-            if (server.HasExited) { timer.Stop(); status.Text = "启动失败或服务退出。请查看 .local/launcher.log"; return; }
+            if (server.HasExited) { timer.Stop(); status.Text = "服务启动失败或已退出，请查阅运行日志：.local/launcher.log"; return; }
             if (!opened && Healthy()) { opened = true; status.Text = "运行中：" + Url; Open(Url); }
-            else if (!opened && (DateTime.Now - started).TotalSeconds > 120) { Stop(); status.Text = "启动超时，请查看 .local/launcher.log"; }
+            else if (!opened && (DateTime.Now - started).TotalSeconds > 120) { Stop(); status.Text = "服务启动超时，请查阅运行日志：.local/launcher.log"; }
         };
         FormClosing += delegate { Stop(); };
         Shown += delegate { TryStart(); };

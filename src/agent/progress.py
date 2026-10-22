@@ -5,11 +5,11 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 STAGES = {
-    'preparing': '理解问题',
+    'preparing': '分析咨询事项',
     'reading': '读取参考材料',
-    'thinking': '分析问题',
-    'searching': '检索官方政策',
-    'reviewing': '核对检索来源',
+    'thinking': '研判业务问题',
+    'searching': '检索政策资料',
+    'reviewing': '核验资料来源',
     'specialist': '分析专项问题',
     'writing': '整理答复',
 }

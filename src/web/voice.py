@@ -2,7 +2,7 @@
 import tempfile
 from pathlib import Path
 
-from fastapi import HTTPException, UploadFile, File
+from fastapi import File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -25,9 +25,9 @@ def install_voice(app, service):
                 load_llm_config()
             return prepared.prepare(history, body.turn)
         except (FileNotFoundError, ValueError):
-            raise HTTPException(404, '对话不存在。') from None
+            raise HTTPException(404, '未找到相应咨询记录，请刷新列表后重试。') from None
         except MissingAPIKeyError:
-            raise HTTPException(503, '口播模型尚未配置。') from None
+            raise HTTPException(503, '答复朗读服务尚未配置，请联系系统维护人员。') from None
         except VoiceError as error:
             raise HTTPException(error.status, error.message) from None
 
@@ -40,7 +40,7 @@ def install_voice(app, service):
     def segment(body: VoiceRequest):
         chunks, voice, first = get_prepared(body)
         if body.segment >= len(chunks):
-            raise HTTPException(422, '音频段不存在。')
+            raise HTTPException(422, '未找到相应音频片段，请重新发起朗读。')
         try:
             audio = first if body.segment == 0 else prepared.synthesize_chunk(chunks[body.segment], voice)
         except VoiceError as error:

@@ -1,6 +1,6 @@
-# Xiaochi Agent
+# Xiaochi Public-sector Work Assistant
 
-Xiaochi is a government tax-work assistant built on the 3wagent core. It helps staff query tax policies, read uploaded materials, draft consultation replies and check calculations. Mainland China is the default jurisdiction; foreign jurisdictions are considered when requested.
+Xiaochi is a public-sector work assistant built on the 3wagent core. It supports policy queries and materials analysis for tax, foreign-exchange, commerce and development matters, consultation drafts and calculation checks. Mainland China is the default jurisdiction; foreign jurisdictions are considered when requested.
 
 [简体中文](README.zh-CN.md) · [Runtime guide](src/README.md) · [Architecture](src/docs/architecture.md) · [Capability roadmap](src/docs/agent-capability-roadmap.md)
 
@@ -8,11 +8,11 @@ Xiaochi is a government tax-work assistant built on the 3wagent core. It helps s
 
 ### Answer modes
 
-The Web composer defaults to **Rough (粗略)** and remembers the selection. **Precise (精细)** retains the existing source-review workflow. Each answer persists its mode and elapsed time.
+The Web composer defaults to **Quick Response (快速答复)** and remembers the selection. **In-depth Analysis (深入研判)** retains the existing source-review workflow. Each answer persists its mode and elapsed time.
 
-Rough mode skips source review, relevance-model judging, official-page fetching and specialist delegation. It allows at most one lightweight search and three tool calls, uses a concise prompt, and excludes old internal tool traces from inference while retaining stored history and user attachments. Results are explicitly unverified. It prepares narration only on playback. Precise mode checks relevant original evidence and treats earlier rough conclusions as unverified. Neither mode prewarms narration without a Fish key.
+Quick Response skips source review, relevance-model judging, official-page fetching and specialist delegation. It allows at most one lightweight search and three tool calls, uses a concise prompt, and excludes old internal tool traces from inference while retaining stored history and user attachments. Results are explicitly unverified. It prepares narration only on playback. In-depth Analysis checks relevant original evidence and treats earlier Quick Response conclusions as unverified. Neither mode prewarms narration without a Fish key.
 
-Message API requests accept `mode: "rough" | "precise"`; omission preserves precise behavior for existing clients. CLI behavior is unchanged. Legacy `.xls` uploads now work with the `legacy-excel` extra. No OCR, multi-user authorization, or concurrent-agent support has been added.
+Message API requests accept `mode: "rough" | "precise"`; omission preserves the in-depth workflow for existing clients. CLI behavior is unchanged. Legacy `.xls` uploads now work with the `legacy-excel` extra. No OCR, multi-user authorization, or concurrent-agent support has been added.
 
 - Home shortcuts cover tax, foreign-exchange, and commerce/development matters, with four editable question starters per category. The larger composer removes repeated labels and the standalone footer; completed answers retain the reference notice.
 - Blue-and-red workspace with a navy history sidebar, a central chat panel, and official resources on wide screens. Subtle entry, hover and waiting animations respect reduced-motion preferences; uploads, policy links and answer copying remain available.
@@ -24,7 +24,7 @@ Message API requests accept `mode: "rough" | "precise"`; omission preserves prec
 
 Every final answer receives this programmatically appended disclaimer:
 
-> 以上内容由 AI 生成，仅供参考，具体请以现行有效政策及主管税务机关确认口径为准。
+> 本内容由人工智能生成，仅供工作参考，不代表主管部门意见。政策适用及业务办理，请以现行有效规定和主管部门确认意见为准。
 
 ## Deployment guide
 

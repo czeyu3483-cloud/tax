@@ -7,7 +7,15 @@ from src.agent.public_answer import (
     legacy_public_history,
     public_text,
 )
-from src.config.product import DISCLAIMER
+from src.config.product import DISCLAIMER, LEGACY_DISCLAIMERS
+
+
+def test_historical_notice_normalizes_once_without_changing_quoted_text():
+    old = LEGACY_DISCLAIMERS[0]
+    body = f'引用说明：“{old}”\n该事项尚需人工复核。'
+    answer = public_text(f'{body}\n{old}\n{DISCLAIMER}\n{old}')
+    assert answer == f'{body}\n\n{DISCLAIMER}'
+    assert public_text(answer) == answer
 
 
 @pytest.mark.parametrize('last', [

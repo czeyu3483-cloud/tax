@@ -5,7 +5,7 @@ const modePicker = $('answer-mode');
 try {modePicker.value = localStorage.getItem('xiaochi-answer-mode') === 'precise' ? 'precise' : 'rough';} catch (_) {}
 function updateModeHint() {
   $('answer-mode-hint').textContent = modePicker.value === 'rough'
-    ? '快速答复，不审核资料来源' : '读取原文并核对依据，耗时较长';
+    ? '优先形成参考答复，资料来源未经核验' : '检索原文并核对依据，处理时间相对较长';
 }
 modePicker.addEventListener('change', () => {
   updateModeHint();
@@ -24,10 +24,22 @@ function showHistoryNotice(item) {
   hideHistoryNotice(); lastDeleted = item; $('history-notice').hidden = false;
   historyNoticeTimer = setTimeout(hideHistoryNotice, 8000);
 }
+async function request(path, options = {}) {
+  try {return await fetch(path, options);} catch (error) {
+    if (error.name === 'AbortError') throw error;
+    throw new Error('服务连接中断，请检查网络及服务运行状态后重试。');
+  }
+}
+async function responseData(response) {
+  try {return await response.json();} catch (error) {
+    if (error.name === 'AbortError') throw error;
+    throw new Error('服务响应异常，请稍后重试；如问题持续，请联系系统维护人员。');
+  }
+}
 async function api(path, options = {}) {
-  const response = await fetch(path, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '请求未完成，请检查输入后重试。');
+  const response = await request(path, options);
+  const data = await responseData(response);
+  if (!response.ok) throw new Error(typeof data?.detail === 'string' ? data.detail : '请求未完成，请检查输入后重试。');
   return data;
 }
 function showError(message = '') { $('error').textContent = message; $('error').hidden = !message; }
@@ -37,7 +49,7 @@ function setBusy(value) {
   for (const button of document.querySelectorAll('button')) button.disabled = value;
   $('question').readOnly = value;
   modePicker.disabled = value;
-  $('send-button').textContent = value ? '处理中' : '发送';
+  $('send-button').textContent = value ? '处理中' : '提交';
 }
 function scrollEnd() {
   const workspace = document.querySelector('.workspace');
@@ -48,7 +60,7 @@ function assistantLabel(item = {}) {
   const label = document.createElement('div'); label.className = 'assistant-label';
   const name = document.createElement('span'); name.textContent = agentName;
   const note = document.createElement('span'); note.className = 'answer-caption';
-  note.textContent = item.mode === 'rough' ? '粗略模式 · 来源未审核' : '精细模式 · 参考答复';
+  note.textContent = item.mode === 'rough' ? '快速答复 · 资料来源未经核验' : '深入研判 · 供工作参考';
   if (Number.isFinite(item.elapsed_seconds)) note.textContent += ` · ${item.elapsed_seconds.toFixed(1)}秒`;
   label.append(name, note); return label;
 }
@@ -75,7 +87,7 @@ function renderMessages(waiting = false) {
       if (Array.isArray(item.related_questions) && item.related_questions.length === 3) {
         const related = document.createElement('section'); related.className = 'related-questions'; related.setAttribute('aria-label', '相关问题');
         const heading = document.createElement('h3'); heading.textContent = '相关问题';
-        const hint = document.createElement('span'); hint.textContent = '点击填入提问框'; heading.append(hint); related.append(heading);
+        const hint = document.createElement('span'); hint.textContent = '选择后填入咨询输入框'; heading.append(hint); related.append(heading);
         for (const question of item.related_questions) {
           const button = document.createElement('button'); button.type = 'button'; button.disabled = state.busy;
           button.textContent = question; button.addEventListener('click', () => useQuestion(question)); related.append(button);
@@ -88,9 +100,9 @@ function renderMessages(waiting = false) {
   if (waiting) {
     const article = document.createElement('article'); article.className = 'message assistant'; article.append(assistantLabel({mode:modePicker.value}));
     const text = document.createElement('div'); text.className = 'waiting'; text.setAttribute('role', 'status');
-    const phase = document.createElement('span'); phase.id = 'progress-text'; phase.textContent = `${agentName}正在理解问题……`;
+    const phase = document.createElement('span'); phase.id = 'progress-text'; phase.textContent = `${agentName}正在分析咨询事项……`;
     const elapsed = document.createElement('small'); elapsed.id = 'progress-elapsed'; elapsed.className = 'waiting-elapsed'; elapsed.setAttribute('aria-hidden', 'true');
-    elapsed.textContent = '已处理 0 秒';
+    elapsed.textContent = '已用时 0 秒';
     text.append(phase, elapsed); article.append(text); $('messages').append(article);
   }
   scrollEnd();
@@ -100,7 +112,7 @@ function watchProgress(conversationId, requestId) {
   const started = performance.now();
   const tick = async () => {
     const elapsed = $('progress-elapsed');
-    if (elapsed) elapsed.textContent = `已处理 ${Math.floor((performance.now() - started) / 1000)} 秒`;
+    if (elapsed) elapsed.textContent = `已用时 ${Math.floor((performance.now() - started) / 1000)} 秒`;
     if (stopped || polling) return;
     polling = true;
     try {
@@ -127,14 +139,14 @@ async function refreshHistory() {
   const {conversations} = await api('/api/conversations');
   $('history-count').textContent = conversations.length;
   $('history').replaceChildren();
-  if (!conversations.length) {const note = document.createElement('p'); note.className = 'history-empty'; note.textContent = '暂无历史对话'; $('history').append(note);}
+  if (!conversations.length) {const note = document.createElement('p'); note.className = 'history-empty'; note.textContent = '暂无咨询记录'; $('history').append(note);}
   for (const item of conversations) {
     const row = document.createElement('div'); row.className = `history-row${item.id === state.id ? ' active' : ''}`;
     const button = document.createElement('button'); button.className = `history-item${item.id === state.id ? ' active' : ''}`; button.title = item.title; button.disabled = state.busy;
     const label = document.createElement('span'); label.className = 'label'; label.textContent = item.title; button.append(label);
     button.addEventListener('click', () => selectConversation(item.id));
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'history-delete'; remove.disabled = state.busy;
-    remove.title = '删除对话'; remove.setAttribute('aria-label', `删除对话：${item.title}`);
+    remove.title = '删除记录'; remove.setAttribute('aria-label', `删除记录：${item.title}`);
     remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7"/></svg>';
     remove.addEventListener('click', () => {
       if (state.busy) return;
@@ -206,8 +218,8 @@ $('attach-button').addEventListener('click', () => $('file-input').click());
 $('file-input').addEventListener('change', async () => {
   if (state.busy) return;
   const files = [...$('file-input').files]; $('file-input').value = '';
-  if (files.length + state.attachments.length > 5) {showError('每条问题最多上传 5 份材料。'); return;}
-  if (files.some(file => file.size > 25 * 1024 * 1024)) {showError('单个文件不能超过 25 MB。'); return;}
+  if (files.length + state.attachments.length > 5) {showError('每次咨询最多上传 5 份材料。'); return;}
+  if (files.some(file => file.size > 25 * 1024 * 1024)) {showError('单份材料不得超过 25 MB。'); return;}
   setBusy(true); showError();
   try {
     await ensureConversation();
@@ -285,7 +297,7 @@ async function initialize() {
     selectCategory(0);
     await refreshHistory();
     const remembered = localStorage.getItem('xiaochi-conversation'); if (remembered) await selectConversation(remembered);
-  } catch (error) {showError('页面连接未完成，请刷新后重试。');}
+  } catch (error) {showError('暂时无法连接服务，请确认服务已启动后刷新页面。');}
 }
 // Pause decorative sprite work when this page is in the background.
 function syncMascotVisibility() {

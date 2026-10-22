@@ -14,7 +14,7 @@ function stopVoice() {
 function voiceButton(conversationId, turn) {
   const wrap = document.createElement('div'); wrap.className = 'voice-action';
   const button = document.createElement('button'); button.type = 'button'; button.className = 'voice-icon';
-  button.title = '朗读结论 / 重新播放'; button.setAttribute('aria-label', '朗读结论'); button.innerHTML = speakerIcon;
+  button.title = '答复要点朗读 / 重新播放'; button.setAttribute('aria-label', '答复要点朗读'); button.innerHTML = speakerIcon;
   const note = document.createElement('span'); note.className = 'voice-note'; note.setAttribute('role', 'status');
   const audio = document.createElement('audio'); audio.controls = true; audio.hidden = true;
   wrap.append(button, note, audio);
@@ -23,17 +23,17 @@ function voiceButton(conversationId, turn) {
     const controller = new AbortController(); voiceAbort = controller; voiceAudio = audio;
     const signal = controller.signal;
     const body = {conversation_id: conversationId, turn};
-    const request = (path, data) => api(path, {method:'POST', signal, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
-    note.textContent = '正在准备首句…';
+    const voiceRequest = (path, data) => api(path, {method:'POST', signal, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+    note.textContent = '正在准备朗读内容…';
     const segment = async (index) => {
-      const response = await fetch('/api/voice/segment', {method:'POST', signal, headers:{'Content-Type':'application/json'}, body:JSON.stringify({...body, segment:index})});
-      if (!response.ok) {const data = await response.json(); throw new Error(data.detail || '音频生成失败');}
+      const response = await request('/api/voice/segment', {method:'POST', signal, headers:{'Content-Type':'application/json'}, body:JSON.stringify({...body, segment:index})});
+      if (!response.ok) {const data = await responseData(response); throw new Error(typeof data?.detail === 'string' ? data.detail : '朗读内容生成失败，请稍后重试。');}
       const blob = await response.blob();
       if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
       const url = URL.createObjectURL(blob); voiceUrls.add(url); return url;
     };
     try {
-      const prepared = await request('/api/voice/prepare', body);
+      const prepared = await voiceRequest('/api/voice/prepare', body);
       let next = segment(0).then(url => ({url}), error => ({error}));
       for (let index = 0; index < prepared.segments; index++) {
         const result = await next;
@@ -48,12 +48,12 @@ function voiceButton(conversationId, turn) {
           audio.onerror = () => {clean(); reject(new Error('音频播放失败，请重试。'));};
           signal.addEventListener('abort', aborted, {once:true});
         });
-        audio.play().catch(() => {if (!signal.aborted) note.textContent = '请点击播放条开始播放';});
+        audio.play().catch(() => {if (!signal.aborted) note.textContent = '请选择播放按钮开始朗读';});
         // One segment ahead, only after the user requested playback.
         if (index + 1 < prepared.segments) next = segment(index + 1).then(url => ({url}), error => ({error}));
         await finished;
       }
-      note.textContent = '朗读完成 · 点击声音图标可重放全文';
+      note.textContent = '朗读完成 · 选择朗读按钮可重新播放';
     } catch (error) {if (token === voiceEpoch && error.name !== 'AbortError') note.textContent = error.message;}
   });
   return wrap;
@@ -96,7 +96,7 @@ async function toggleMicrophone() {
           $('question').value = [$('question').value.trim(),result.text].filter(Boolean).join('\n');
           $('question').dispatchEvent(new Event('input')); $('question').focus();
         }
-      } catch(error) {if(token===voiceEpoch) showError(error.message);}
+      } catch(error) {if(token===voiceEpoch) showError(error.name === 'Error' ? error.message : '录音处理失败，请重新录制；如问题持续，请检查浏览器是否支持音频处理。');}
       finally {await context?.close(); button.disabled=state.busy;}
     };
     current.start(); button.classList.add('recording'); button.setAttribute('aria-label','停止录音'); button.title='停止录音';

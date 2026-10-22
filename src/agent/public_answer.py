@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from qwen_agent.llm.schema import Message
 
 from src.agent.followups import fallback_questions, split_related_questions
-from src.config.product import AGENT_NAME, DISCLAIMER
+from src.config.product import AGENT_NAME, DISCLAIMER, strip_product_notices
 
 INCOMPLETE_ANSWER = '暂时未能形成完整答复。请补充问题或材料后重试。'
 _INTERNAL_BLOCK = re.compile(
@@ -19,8 +19,7 @@ _INTERNAL_BLOCK = re.compile(
 def public_text(text: str) -> str:
     """Remove embedded internal blocks and attach the footer exactly once."""
     text, _ = split_related_questions(_INTERNAL_BLOCK.sub('', text).strip())
-    while text.endswith(DISCLAIMER):
-        text = text[:-len(DISCLAIMER)].rstrip()
+    text = strip_product_notices(text)
     return f'{text or INCOMPLETE_ANSWER}\n\n{DISCLAIMER}'
 
 

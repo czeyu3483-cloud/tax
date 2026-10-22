@@ -43,6 +43,6 @@ def parse(path: Path, settings) -> tuple:
         if avg_chars < settings.pdf_min_chars_per_page:
             warnings.append(
                 f'平均每页仅 {avg_chars:.0f} 字符，可能是扫描件或图片型 PDF；'
-                '建议接入 MinerU 做高精度解析（当前为轻量解析结果）。'
+                '当前仅提取可识别的文字，请提供可检索的 PDF 或文字材料，并核对是否存在遗漏。'
             )
     return chunks, warnings, metadata

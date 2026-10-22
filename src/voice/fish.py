@@ -1,17 +1,16 @@
 """Fish TTS adapter reused from one2one-education; no ASR/model imports."""
 
+import hashlib
 import io
 import json
-import hashlib
 import threading
 import time
 import wave
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from .config import VoiceError
 from .audio_cache import AudioCache
-from .config import api_key, MODEL, WORK
+from .config import MODEL, WORK, VoiceError, api_key
 
 SAMPLE_RATE = 24000
 MAX_OUTPUT_BYTES = SAMPLE_RATE * 2 * 180
@@ -36,7 +35,7 @@ class FishSpeechEngine:
 
     def synthesize(self, text, rate, voice):
         if not self._key:
-            raise VoiceError('API_KEY_MISSING', '请配置 FISH_AUDIO_API_KEY_FILE 或 FISH_AUDIO_API_KEY。', 503)
+            raise VoiceError('API_KEY_MISSING', '语音朗读服务尚未配置，请联系系统维护人员配置接口密钥。', 503)
         if not self._lock.acquire(blocking=False):
             raise VoiceError('ENGINE_BUSY', '上一段语音仍在处理，请稍后重试。', 409)
         try:
@@ -61,7 +60,7 @@ class FishSpeechEngine:
             with self._opener.open(request, timeout=20) as response:
                 content_type = response.headers.get('Content-Type', '').split(';')[0].strip()
                 if content_type not in ('audio/pcm', 'audio/L16', 'audio/raw', 'application/octet-stream'):
-                    raise VoiceError('INVALID_UPSTREAM_AUDIO', '语音服务返回的不是预期 PCM 音频。', 502)
+                    raise VoiceError('INVALID_UPSTREAM_AUDIO', '语音服务返回的音频格式异常，请稍后重试。', 502)
                 pcm = bytearray()
                 while True:
                     if time.monotonic() > deadline:
@@ -84,16 +83,16 @@ class FishSpeechEngine:
             return output.getvalue(), round(len(pcm) / 2 / SAMPLE_RATE * 1000)
         except HTTPError as exc:
             codes = {
-                401: ('FISH_AUTH', 'Fish API key 无效，请检查服务端配置。'),
-                402: ('FISH_QUOTA', '免费服务或账户额度不可用；未切换付费模型。'),
-                403: ('FISH_FORBIDDEN', '账户无法使用该声音或模型，请检查访问权限。'),
-                404: ('FISH_NOT_FOUND', '目标声音或接口不可用。'),
-                429: ('FISH_RATE_LIMIT', 'Fish 服务限流，请稍后手动重试。'),
+                401: ('FISH_AUTH', '语音服务身份验证未通过，请联系系统维护人员核查接口密钥。'),
+                402: ('FISH_QUOTA', '当前语音服务额度不可用，请联系系统维护人员核查账户。'),
+                403: ('FISH_FORBIDDEN', '当前账户无权访问所选语音资源，请联系系统维护人员核查权限。'),
+                404: ('FISH_NOT_FOUND', '所选语音资源或服务接口暂不可用，请联系系统维护人员。'),
+                429: ('FISH_RATE_LIMIT', '语音服务请求较多，请稍后重试。'),
             }
-            code, message = codes.get(exc.code, ('FISH_FAILED', 'Fish 语音服务暂不可用，请稍后手动重试。'))
+            code, message = codes.get(exc.code, ('FISH_FAILED', '语音朗读服务暂不可用，请稍后重试。'))
             exc.close()
             raise VoiceError(code, message, 502) from None
         except (TimeoutError, URLError, OSError):
-            raise VoiceError('FISH_NETWORK', '连接 Fish 服务失败或超时，请检查网络后手动重试。', 504) from None
+            raise VoiceError('FISH_NETWORK', '语音服务连接失败或超时，请检查网络后重试。', 504) from None
         finally:
             self._lock.release()

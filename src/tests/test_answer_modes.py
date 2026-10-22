@@ -102,7 +102,7 @@ def test_rough_agent_has_no_specialist_and_does_not_mutate_config(monkeypatch):
     assert captured['function_list'] == ['AttachmentReadTool', 'WebSearchTool', 'WriteResult']
     assert captured['llm']['generate_cfg']['reasoning_effort'] == 'low'
     assert config['generate_cfg'] == {}
-    assert '粗略模式' in captured['system_message']
+    assert '快速答复' in captured['system_message']
 
 
 def test_rough_tool_budget_forces_finalization():

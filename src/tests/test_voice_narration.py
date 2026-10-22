@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 from src.agent.conversations import ConversationStore
-from src.config.product import DISCLAIMER
+from src.config.product import DISCLAIMER, LEGACY_DISCLAIMERS
 from src.voice import client, narration, prepared
 from src.voice.text import without_ai_footer
 from src.web import voice
@@ -17,7 +17,7 @@ from src.web.app import create_app
 BODY = '办理期限为二十个工作日，不包括补正材料时间；不保证审批通过。'
 
 
-@pytest.mark.parametrize('notice', [DISCLAIMER, '以上内容由 ai 生成，仅供参考。',
+@pytest.mark.parametrize('notice', [DISCLAIMER, *LEGACY_DISCLAIMERS, '以上内容由 ai 生成，仅供参考。',
                                   '以上内容由人工智能生成，仅供参考。'])
 def test_final_answer_and_chunks_exclude_notice_but_keep_conditions(notice):
     history = [{'role': 'user', 'content': '办理多久？'},

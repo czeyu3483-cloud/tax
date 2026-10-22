@@ -340,7 +340,7 @@ class WebSearchTool(BaseTool):
             self._budget_run_id, self._search_count = run_id, 0
         if self._search_count:
             return _error_json('search_budget_exhausted',
-                              '粗略模式只搜索一次。请立即使用已有内容回答，注明尚未核验。')
+                              '快速答复只搜索一次。请立即使用已有内容回答，注明尚未核验。')
         self._search_count += 1
         try:
             response = self.client.search(query, limit=4)

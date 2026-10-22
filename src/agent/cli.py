@@ -37,11 +37,11 @@ def run_cli(
     history: list[Message] = []
     _write(
         output_stream,
-        "小弛 CLI\n命令：/clear 清空对话，/exit 或 /quit 退出。\n",
+        "小弛政务业务辅助系统（命令行）\n命令：/clear 清空对话，/exit 或 /quit 退出。\n",
     )
 
     while True:
-        _write(output_stream, "\n你> ")
+        _write(output_stream, "\n咨询> ")
         line = input_stream.readline()
         if line == "":
             _write(output_stream, "\n")

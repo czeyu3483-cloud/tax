@@ -18,11 +18,11 @@ PROMPT = '''你是口播编辑，不是研究助手。用户消息是待整理�
 表格中有实质结论的内容要转成自然句子，不能直接丢掉。法律名称、主体、适用地域、关键日期、
 金额、比例、期限及其触发条件、例外、否定和不确定性必须忠实保留；不要把不同事项的期限混在一起。
 不需要逐条播报作为引用的条文编号；如果问题的答案本身就是条款定位，则保留必要的条款编号。
-用简洁自然的中文短句，不要标题、列表序号或“以下是口播稿”。常见符号改成自然读法，
+用规范、简明、适宜政务工作场景的中文短句，不要标题、列表序号或“以下是口播稿”。常见符号改成自然读法，
 不要改变专业术语的含义。不逐字复读冗长原文，通常控制在三百至八百字，简单回答可更短，
 但不得为了缩短而遗漏影响结论的关键限制。没有可读结论时返回空字符串。
 简短问候或澄清问题也是可读内容，直接保留，不要因其没有政策结论而返回空字符串。
-不朗读页面统一追加的“以上内容由 AI 生成，仅供参考”提示；答复本身的政策限制、
+不朗读页面统一追加的人工智能生成及工作参考提示；答复本身的政策限制、
 例外、风险说明和不确定性仍须保留，不得用上述提示代替。
 只输出 JSON 对象，格式为 {"speech": "口播正文"}。'''
 
@@ -31,9 +31,9 @@ def prepare_narration(text):
     text = without_ai_footer(text)
     config = get_active_llm_config()
     if not config:
-        raise VoiceError('NO_LLM', '尚未配置口播整理模型，请检查模型配置。')
+        raise VoiceError('NO_LLM', '答复朗读服务尚未配置，请联系系统维护人员。')
     if not text.strip() or len(text) > 24000:
-        raise VoiceError('INVALID_TEXT', '回答为空或过长，请先让模型给出简要结论。', 422)
+        raise VoiceError('INVALID_TEXT', '答复内容为空或超出朗读长度限制，请先生成答复摘要。', 422)
     identity = json.dumps([PROMPT, config['model_server'], config['model'], text], ensure_ascii=False)
     key = hashlib.sha256(identity.encode()).hexdigest()
     directory = WORK / 'narration-cache'
@@ -72,7 +72,7 @@ def prepare_narration(text):
         if re.search(r'https?://|```|<think>|\|.*\||【\d+】|\[\d+\]', speech):
             raise ValueError('Narration contains non-spoken markup')
     except (OpenAIError, OSError, ValueError, TypeError, AttributeError, IndexError):
-        raise VoiceError('NARRATION_FAILED', '口播内容整理失败，请重试；未朗读原始内容。') from None
+        raise VoiceError('NARRATION_FAILED', '答复朗读内容整理失败，请稍后重试。') from None
     try:
         directory.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({'speech': speech, 'model': config['model'],

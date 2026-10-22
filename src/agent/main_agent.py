@@ -100,7 +100,7 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
         if self.answer_mode == 'rough':
             tools = ['AttachmentReadTool', 'WebSearchTool', 'WriteResult']
         prompt = ROUGH_PROMPT if self.answer_mode == 'rough' else (
-            MAIN_AGENT_SYS_PROMPT + '\n当前为精细模式。先前对话可能包含未经审核的粗略答复，'
+            MAIN_AGENT_SYS_PROMPT + '\n当前为深入研判。先前对话可能包含未经来源核验的快速答复，'
             '不可将它们作为已核验依据；对本轮关键政策结论重新核对实际来源，无法核实则明确说明。'
         )
         super().__init__(
@@ -144,9 +144,9 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
                 Message(
                     role='assistant',
                     content=(
-                        '暂时无法读取你上传的附件。'
+                        '暂时无法读取所上传的附件。'
                         f'当前支持的格式：{supported_formats_hint()}。'
-                        '或者在消息中补充具体问题后重试。'
+                        '请补充具体咨询事项或重新上传可读取的文件。'
                     ),
                 )
             ]
@@ -202,7 +202,7 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
             self._rough_tool_calls += 1
             if self._rough_tool_calls > 3:
                 result = json.dumps({'error': {'code': 'search_budget_exhausted',
-                    'message': '粗略模式工具预算已用完，请根据已有材料立即回答，注明未核验信息。'}},
+                    'message': '快速答复工具预算已用完，请根据已有材料立即回答，注明未核验信息。'}},
                     ensure_ascii=False)
                 raise_for_terminal_tool_result(tool_name, result)
         self.current_step = f'按需调用：{tool_name}'

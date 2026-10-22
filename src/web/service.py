@@ -85,7 +85,7 @@ class ChatService:
     def change_history(self, conversation_id: str, *, restore: bool = False) -> None:
         # A running answer must finish saving before its history can be removed.
         if not _RUN_LOCK.acquire(blocking=False):
-            raise BusyError('正在处理问题，请待答复完成后再管理历史对话。')
+            raise BusyError('当前咨询正在处理，请待答复完成后再管理咨询记录。')
         try:
             if restore:
                 self.store.restore(conversation_id)
@@ -97,7 +97,7 @@ class ChatService:
     def answer(self, conversation_id: str, text: str, attachment_ids: list[str],
                request_id: str | None = None, mode: AnswerMode = 'precise') -> dict:
         if not _RUN_LOCK.acquire(blocking=False):
-            raise BusyError('正在处理另一条问题，请稍后再试。')
+            raise BusyError('当前有其他咨询正在处理，请稍后重试。')
         failed = True
         try:
             if request_id:
@@ -139,7 +139,7 @@ class ChatService:
         final_frame = []
         # Do not yield frames or store them publicly during execution.
         if resolution.should_block:
-            answer = public_text("暂时无法读取这份附件，请补充具体问题或重新上传可读取的文件。")
+            answer = public_text("暂时无法读取该附件，请补充具体咨询事项或重新上传可读取的文件。")
             final_frame = [Message(role="assistant", content=answer, name=AGENT_NAME)]
         else:
             report_progress('thinking')

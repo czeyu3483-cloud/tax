@@ -19,7 +19,7 @@ from typing import Any
 from src.config.runtime import WORKSPACE_DIR
 
 SCHEMA_VERSION = 1
-UNTITLED = "新对话"
+UNTITLED = "新建咨询"
 
 
 def _jsonable(value: Any) -> Any:

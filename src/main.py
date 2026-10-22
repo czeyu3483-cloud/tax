@@ -12,7 +12,7 @@ from src.agent.main_agent import run_3wagent
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description = "小弛 · 税务工作辅助助手")
+    parser = argparse.ArgumentParser(description = "小弛 · 政务业务辅助系统")
     parser.add_argument("-d", "--DEBUG", default=False, action="store_true", help="DEBUG Mode")
     parser.add_argument(
         "--cli",

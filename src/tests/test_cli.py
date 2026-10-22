@@ -38,7 +38,7 @@ def test_cli_only_displays_completed_answers_and_preserves_multi_turn_history():
     assert output.getvalue().count("小弛> 答案") == 2
     assert "检索官方来源" not in errors.getvalue()
     assert "小弛> 答\n" not in output.getvalue()
-    assert output.getvalue().count("以上内容由 AI 生成") == 2
+    assert output.getvalue().count("本内容由人工智能生成") == 2
     assert len(agent.calls) == 2
     assert [message.role for message in agent.calls[1]] == [USER, ASSISTANT, USER]
     assert agent.calls[1][-1].content == "第二个问题"

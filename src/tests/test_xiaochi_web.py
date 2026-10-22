@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from qwen_agent.llm.schema import ASSISTANT, FUNCTION, FunctionCall, Message
 from src.agent.conversations import ConversationStore
-from src.config.product import DISCLAIMER
+from src.config.product import DISCLAIMER, LEGACY_DISCLAIMERS
 from src.web.app import create_app
 from src.web.service import _RUN_LOCK
 
@@ -36,6 +36,23 @@ def web(tmp_path):
     with TestClient(app) as client:
         conversation = client.post('/api/conversations').json()['id']
         yield client, conversation, store
+
+
+def test_history_notice_upgrades_in_response_without_rewriting_stored_material(web):
+    client, conversation, store = web
+    old = LEGACY_DISCLAIMERS[0]
+    user_text = f'请解读此提示：{old}'
+    messages = [{'role': 'user', 'content': user_text},
+                {'role': 'assistant', 'content': '待复核的业务意见。\n\n' + old,
+                 'mode': 'rough', 'elapsed_seconds': 2.5}]
+    store.save(conversation, [], public_messages=messages)
+    before = store.load(conversation)
+    result = client.get(f'/api/conversations/{conversation}').json()['messages']
+    assert result[0]['content'] == user_text
+    assert result[1]['content'] == '待复核的业务意见。\n\n' + DISCLAIMER
+    assert result[1]['mode'] == 'rough'
+    assert result[1]['elapsed_seconds'] == 2.5
+    assert store.load(conversation) == before
 
 
 def test_only_completed_final_answer_crosses_api_boundary_and_history_restore(web):
@@ -214,7 +231,7 @@ def test_progress_is_visible_during_execution_and_contains_only_stage_labels(web
             assert started.wait(5)
             snapshot = client.get(progress_url)
             assert snapshot.status_code == 200
-            assert snapshot.json()['message'] == '小弛正在检索官方政策……'
+            assert snapshot.json()['message'] == '小弛正在检索政策资料……'
             assert snapshot.json()['status'] == 'running'
             assert set(snapshot.json()) == {'stage', 'status', 'message', 'elapsed_seconds'}
             assert 'PRIVATE' not in snapshot.text

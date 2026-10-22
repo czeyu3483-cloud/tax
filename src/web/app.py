@@ -55,7 +55,7 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
             origin = request.headers.get('origin')
             if origin and origin.rstrip('/') != str(request.base_url).rstrip('/'):
                 from fastapi.responses import JSONResponse
-                return JSONResponse({'detail': '请从小弛页面发起请求。'}, status_code=403)
+                return JSONResponse({'detail': '请求来源校验未通过，请通过本系统页面重新操作。'}, status_code=403)
         return await call_next(request)
 
     def existing(conversation_id):
@@ -66,7 +66,7 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
                     message["html"] = render_answer(message["content"])
             return record
         except (ValueError, FileNotFoundError):
-            raise HTTPException(404, '对话不存在。') from None
+            raise HTTPException(404, '未找到相应咨询记录，请刷新列表后重试。') from None
 
     @app.get('/api/config')
     def config():
@@ -98,7 +98,7 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
         except BusyError as exc:
             raise HTTPException(409, str(exc)) from None
         except (ValueError, FileNotFoundError):
-            raise HTTPException(404, '对话不存在。') from None
+            raise HTTPException(404, '未找到相应咨询记录，请刷新列表后重试。') from None
         return {'id': conversation_id, 'restored' if restore else 'deleted': True}
 
     @app.delete('/api/conversations/{conversation_id}')
@@ -115,7 +115,7 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
         try:
             return service.progress.snapshot(str(request_id), conversation_id)
         except KeyError:
-            raise HTTPException(404, '暂无本次请求的进度。') from None
+            raise HTTPException(404, '暂无本次咨询的处理进度。') from None
 
     @app.post('/api/conversations/{conversation_id}/attachments', status_code=201)
     async def upload(conversation_id: str, file: Annotated[UploadFile, File()]):
@@ -134,10 +134,10 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
                 while chunk := await file.read(1024 * 1024):
                     size += len(chunk)
                     if size > ATTACHMENT_SETTINGS.max_file_size_mb * 1024 * 1024:
-                        raise HTTPException(413, f'文件不能超过 {ATTACHMENT_SETTINGS.max_file_size_mb} MB。')
+                        raise HTTPException(413, f'单份材料不得超过 {ATTACHMENT_SETTINGS.max_file_size_mb} MB。')
                     handle.write(chunk)
             if not size:
-                raise HTTPException(400, '文件为空，请重新选择。')
+                raise HTTPException(400, '所选文件内容为空，请核实后重新上传。')
             (directory / 'metadata.json').write_text(json.dumps({'name': name}), encoding='utf-8')
         except Exception:
             target.unlink(missing_ok=True)
@@ -151,16 +151,16 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
         existing(conversation_id)
         text = body.message.strip()
         if not text and not body.attachments:
-            raise HTTPException(400, '请输入问题或上传材料。')
+            raise HTTPException(400, '请输入咨询事项或上传相关材料。')
         try:
             result = service.answer(conversation_id, text, body.attachments,
                                     str(body.request_id) if body.request_id else None, mode=body.mode)
         except BusyError as exc:
             raise HTTPException(409, str(exc)) from None
         except MissingAPIKeyError:
-            raise HTTPException(503, '服务尚未配置模型，请联系维护人员完成配置。') from None
+            raise HTTPException(503, '服务尚未配置模型，请联系系统维护人员完成配置。') from None
         except (FileNotFoundError, ValueError):
-            raise HTTPException(400, '材料或模型配置不可用，请检查配置后重试。') from None
+            raise HTTPException(400, '材料读取或服务配置异常，请核实所提交材料；如问题持续，请联系系统维护人员。') from None
         except Exception:
             LOGGER.exception('Xiaochi turn failed')
             raise HTTPException(502, '暂时无法完成查询，请稍后重试。') from None
