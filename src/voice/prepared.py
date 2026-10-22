@@ -1,14 +1,15 @@
 """Single-flight first-sentence preparation shared by prewarm and playback."""
-from collections import OrderedDict
-from concurrent.futures import Future
 import hashlib
 import json
 import threading
 import time
+from collections import OrderedDict
+from concurrent.futures import Future
 
 from src.config.llm import get_active_llm_config
+
 from . import client
-from .config import MODEL, settings
+from .config import MODEL, api_key, settings
 from .narration import PROMPT, prepare_narration
 
 _pending = OrderedDict()
@@ -47,7 +48,7 @@ def prepare(history, turn):
             chunks = client.speech_chunks(prepare_narration(source))
             first_audio = synthesize_chunk(chunks[0], voice)
             future.set_result((chunks, voice, first_audio))
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - propagate failures to all waiting callers
             future.set_exception(error)
             with _lock:
                 _pending.pop(key, None)
@@ -56,10 +57,12 @@ def prepare(history, turn):
 
 
 def prewarm_latest(history):
+    if not api_key():
+        return
     turn = sum(message.get('role') == 'user' for message in history) - 1
     try:
         prepare(history, turn)
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 - speculative work must not interrupt chat
         # Background preparation never interrupts chat; a click can retry and
         # surface a friendly error through the normal playback callback.
         pass

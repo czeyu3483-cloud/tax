@@ -5,7 +5,7 @@ function plus name/version constants. Heavy parsers (e.g. MinerU for complex
 PDFs) plug in here later without touching downstream code.
 """
 
-from src.attachments.parsers import csv_parser, docx, excel, pdf_basic, text
+from src.attachments.parsers import csv_parser, docx, excel, legacy_excel, pdf_basic, text
 
 PARSER_VERSION = '1.0'
 
@@ -20,6 +20,7 @@ _REGISTRY = {
     '.pdf': ('pdf_basic', pdf_basic.parse),
     '.xlsx': ('excel', excel.parse),
     '.xlsm': ('excel', excel.parse),
+    '.xls': ('legacy_excel', legacy_excel.parse),
     '.docx': ('docx', docx.parse),
 }
 

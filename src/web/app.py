@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from src.agent.conversations import ConversationStore
 from src.attachments.registry import supported_suffixes
+from src.config.answer_mode import AnswerMode
 from src.config.attachments import ATTACHMENT_SETTINGS
 from src.config.llm import MissingAPIKeyError
 from src.config.product import PRODUCT
@@ -30,6 +31,7 @@ class ChatRequest(BaseModel):
     message: str = Field(default='', max_length=20_000)
     attachments: list[str] = Field(default_factory=list, max_length=5)
     request_id: UUID | None = None
+    mode: AnswerMode = 'precise'
 
 
 def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
@@ -152,7 +154,7 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
             raise HTTPException(400, '请输入问题或上传材料。')
         try:
             result = service.answer(conversation_id, text, body.attachments,
-                                    str(body.request_id) if body.request_id else None)
+                                    str(body.request_id) if body.request_id else None, mode=body.mode)
         except BusyError as exc:
             raise HTTPException(409, str(exc)) from None
         except MissingAPIKeyError:
@@ -162,7 +164,8 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
         except Exception:
             LOGGER.exception('Xiaochi turn failed')
             raise HTTPException(502, '暂时无法完成查询，请稍后重试。') from None
-        background_tasks.add_task(prewarm_voice, conversation_id)
+        if body.mode == 'precise':
+            background_tasks.add_task(prewarm_voice, conversation_id)
         return {**result, 'answer_html': render_answer(result['answer'])}
 
     @app.get('/')

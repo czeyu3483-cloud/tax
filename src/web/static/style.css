@@ -251,3 +251,8 @@ button, .resource-links a, .external-arrow, .composer, .history-row {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+.answer-mode-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px 0; font-size:13px; }
+.answer-mode-row label { color:#17385c; font-weight:600; }
+.answer-mode-row select { font:inherit; border:1px solid #a9bed7; background:#fff; color:#17385c; border-radius:6px; padding:6px 9px; }
+.answer-mode-row select:focus-visible { outline:2px solid #235dab; outline-offset:2px; }
+#answer-mode-hint { color:#596a7c; font-size:12px; }

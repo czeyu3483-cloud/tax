@@ -6,6 +6,14 @@ Xiaochi is a government tax-work assistant built on the 3wagent core. It helps s
 
 ## Features
 
+### Answer modes
+
+The Web composer defaults to **Rough (粗略)** and remembers the selection. **Precise (精细)** retains the existing source-review workflow. Each answer persists its mode and elapsed time.
+
+Rough mode skips source review, relevance-model judging, official-page fetching and specialist delegation. It allows at most one lightweight search and three tool calls, uses a concise prompt, and excludes old internal tool traces from inference while retaining stored history and user attachments. Results are explicitly unverified. It prepares narration only on playback. Precise mode checks relevant original evidence and treats earlier rough conclusions as unverified. Neither mode prewarms narration without a Fish key.
+
+Message API requests accept `mode: "rough" | "precise"`; omission preserves precise behavior for existing clients. CLI behavior is unchanged. Legacy `.xls` uploads now work with the `legacy-excel` extra. No OCR, multi-user authorization, or concurrent-agent support has been added.
+
 - Home shortcuts cover tax, foreign-exchange, and commerce/development matters, with four editable question starters per category. The larger composer removes repeated labels and the standalone footer; completed answers retain the reference notice.
 - Blue-and-red workspace with a navy history sidebar, a central chat panel, and official resources on wide screens. Subtle entry, hover and waiting animations respect reduced-motion preferences; uploads, policy links and answer copying remain available.
 - Three contextual follow-up questions after each answer. Clicking fills the editable composer; restored history retains the same questions.

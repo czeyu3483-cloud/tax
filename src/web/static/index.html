@@ -54,13 +54,21 @@
             <span>已删除对话</span><button type="button" id="undo-delete">撤销</button>
           </div>
           <form class="composer" id="chat-form">
+            <div class="answer-mode-row">
+              <label for="answer-mode">回答模式</label>
+              <select id="answer-mode" aria-describedby="answer-mode-hint">
+                <option value="rough">粗略模式</option>
+                <option value="precise">精细模式</option>
+              </select>
+              <span id="answer-mode-hint">快速答复，不审核资料来源</span>
+            </div>
             <div class="attachment-list" id="attachments"></div>
             <label class="sr-only" for="question">请输入您的业务问题</label>
             <textarea id="question" rows="4" placeholder="请输入您的问题，可说明办理事项、适用地区和业务所属期…" maxlength="20000"></textarea>
             <div class="composer-toolbar">
               <button class="voice-icon" type="button" id="mic-button" aria-label="语音输入" title="语音输入"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0014 0v-2M12 19v3m-4 0h8"/></svg></button>
               <button class="attach-button" type="button" id="attach-button" aria-label="上传附件"><span>＋</span> 上传材料</button>
-              <input type="file" id="file-input" accept=".pdf,.docx,.xlsx,.xlsm,.csv,.tsv,.txt,.md,.markdown,.yaml,.yml" multiple hidden>
+              <input type="file" id="file-input" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.csv,.tsv,.txt,.md,.markdown,.yaml,.yml" multiple hidden>
               <span class="input-hint">Enter 发送 · Shift + Enter 换行</span>
               <button class="send-button" id="send-button" type="submit" aria-label="发送问题">发送</button>
             </div>
@@ -96,7 +104,7 @@
   </div>
   <dialog id="delete-dialog" aria-labelledby="delete-heading" aria-describedby="delete-description">
     <h2 id="delete-heading">删除这条对话？</h2>
-    <p id="delete-description">将从历史列表中移除，删除后可以撤销。</p>
+    <p id="delete-description">将从历史列表中移除，删除后可以撤销。附件和运行日志仍保存在本机。</p>
     <p class="delete-title" id="delete-title"></p>
     <div class="dialog-actions">
       <button type="button" id="delete-cancel" autofocus>取消</button>

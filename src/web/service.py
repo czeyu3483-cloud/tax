@@ -5,6 +5,7 @@ import copy
 import json
 import re
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from src.agent.public_answer import (
     public_text,
 )
 from src.attachments.storage import register_session_document, reset_session_documents
+from src.config.answer_mode import AnswerMode, answer_mode, current_mode
 from src.config.product import AGENT_NAME
 from src.web.progress import ProgressTracker
 
@@ -61,7 +63,10 @@ class ChatService:
                 'attachments': [str(name) for name in item.get('attachments', [])]
                 if role == 'user' else [],
                 **({'related_questions': normalize_questions(item.get('related_questions'))
-                    or fallback_questions(question, text)} if role == 'assistant' else {}),
+                    or fallback_questions(question, text),
+                    'mode': item.get('mode') if item.get('mode') in ('rough', 'precise') else 'precise',
+                    'elapsed_seconds': item.get('elapsed_seconds')}
+                   if role == 'assistant' else {}),
             })
         return {**{key: record[key] for key in ('id', 'title', 'created_at', 'updated_at')},
                 'title': conversation_title(messages), 'messages': messages}
@@ -90,14 +95,14 @@ class ChatService:
             _RUN_LOCK.release()
 
     def answer(self, conversation_id: str, text: str, attachment_ids: list[str],
-               request_id: str | None = None) -> dict:
+               request_id: str | None = None, mode: AnswerMode = 'precise') -> dict:
         if not _RUN_LOCK.acquire(blocking=False):
             raise BusyError('正在处理另一条问题，请稍后再试。')
         failed = True
         try:
             if request_id:
                 self.progress.start(request_id, conversation_id)
-            with progress_sink(
+            with answer_mode(mode), progress_sink(
                 (lambda stage: self.progress.update(request_id, stage)) if request_id else None
             ):
                 result = self._answer(conversation_id, text, attachment_ids)
@@ -110,6 +115,8 @@ class ChatService:
             _RUN_LOCK.release()
 
     def _answer(self, conversation_id: str, text: str, attachment_ids: list[str]) -> dict:
+        started = time.monotonic()
+        mode = current_mode()
         record = self.store.load(conversation_id)
         public = self.public_record(conversation_id)['messages']
         files = [self.attachment(conversation_id, item) for item in attachment_ids]
@@ -137,15 +144,33 @@ class ChatService:
         else:
             report_progress('thinking')
             agent = self.agent_factory()
-            for frame in agent.run(history):
+            # Keep complete storage intact. Rough inference omits old tool traces,
+            # while retaining user material and public answers in the same order.
+            model_history = history
+            if mode == 'rough':
+                model_history = []
+                users = iter(message for message in history[:-1] if message.role == 'user')
+                for item in public:
+                    if item['role'] == 'user':
+                        original = next(users, None)
+                        model_history.append(copy.deepcopy(original) if original is not None
+                                             else Message(role='user', content=item['content']))
+                    else:
+                        model_history.append(Message(role='assistant', content=item['content'],
+                                                     name=AGENT_NAME))
+                model_history.append(history[-1])
+            for frame in agent.run(model_history):
                 final_frame = frame
             answer = completed_answer(final_frame, getattr(agent, "name", AGENT_NAME))
         questions = completed_questions(final_frame, text)
         report_progress('writing')
         history.extend(final_frame)
+        elapsed = round(time.monotonic() - started, 2)
         public += [
             {'role': 'user', 'content': text, 'attachments': [item['name'] for item in files]},
-            {'role': 'assistant', 'content': answer, 'related_questions': questions},
+            {'role': 'assistant', 'content': answer, 'related_questions': questions,
+             'mode': mode, 'elapsed_seconds': elapsed},
         ]
         self.store.save(conversation_id, history, public_messages=public)
-        return {'conversation_id': conversation_id, 'answer': answer, 'related_questions': questions}
+        return {'conversation_id': conversation_id, 'answer': answer, 'related_questions': questions,
+                'mode': mode, 'elapsed_seconds': elapsed}

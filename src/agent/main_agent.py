@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Iterator
 from datetime import datetime
@@ -30,6 +31,7 @@ from src.agent.tool_loop_guard import (
     terminal_finalize_prompt,
     tool_free_finalize_messages,
 )
+from src.config.answer_mode import ROUGH_PROMPT, current_mode
 from src.config.llm import load_llm_config
 from src.config.logger import attach_run_log
 from src.config.product import AGENT_NAME, PRODUCT
@@ -60,10 +62,19 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
         *,
         suggest_followups: bool = False,
     ):
+        self.answer_mode = current_mode()
+        self._rough_tool_calls = 0
+        if self.answer_mode == 'rough' and isinstance(llm, dict):
+            llm = copy.deepcopy(llm)
+            if str(llm.get('model_server', '')).rstrip('/') in {
+                'https://api.deepseek.com', 'https://api.deepseek.com/v1',
+            }:
+                llm.setdefault('generate_cfg', {})['reasoning_effort'] = 'low'
+            llm.setdefault('generate_cfg', {})['request_timeout'] = 45
         subagent_tools = ['MarkDownReadTool', 'YamlReadTool', 'AttachmentReadTool']
         retrieval_tools = subagent_tools + ['WebSearchTool']
         verification_tools = subagent_tools + ['WebSearchTool']
-        self.specialists = {
+        self.specialists = {} if self.answer_mode == 'rough' else {
             'source_research': RagSubAgent(function_list=retrieval_tools, llm=llm),
             'validity_review': ValidateSubAgent(function_list=verification_tools, llm=llm),
             'tax_analysis': TaxPolicyAnalystSubAgent(function_list=subagent_tools, llm=llm),
@@ -86,13 +97,20 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
             'WriteResult',
             self.delegate_tool,
         ]
+        if self.answer_mode == 'rough':
+            tools = ['AttachmentReadTool', 'WebSearchTool', 'WriteResult']
+        prompt = ROUGH_PROMPT if self.answer_mode == 'rough' else (
+            MAIN_AGENT_SYS_PROMPT + '\n当前为精细模式。先前对话可能包含未经审核的粗略答复，'
+            '不可将它们作为已核验依据；对本轮关键政策结论重新核对实际来源，无法核实则明确说明。'
+        )
         super().__init__(
             llm=llm,
             function_list=tools,
-            system_message=(MAIN_AGENT_SYS_PROMPT + '\n当前日期（北京时间）：'
+            system_message=(prompt + '\n当前日期（北京时间）：'
                             + datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat()
                             + '。相对日期按此日期理解；用户指定的政策所属期另行遵守。'
-                            + (RELATED_QUESTIONS_PROMPT if suggest_followups else '')),
+                            + (RELATED_QUESTIONS_PROMPT if suggest_followups
+                               and self.answer_mode != 'rough' else '')),
             name=AGENT_NAME,
             description=PRODUCT['tagline'],
         )
@@ -136,6 +154,7 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
 
         # Start a new run: all artifacts go under workspace/<run_id>/
         new_run_id()
+        self._rough_tool_calls = 0
         register_user_provided_urls(_message_text(messages[-1]))
         attach_run_log(getattr(self.llm, 'model', 'model') or 'model')
 
@@ -179,6 +198,13 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
             yield frame
 
     def _call_tool(self, tool_name, tool_args='{}', **kwargs):
+        if getattr(self, 'answer_mode', 'precise') == 'rough':
+            self._rough_tool_calls += 1
+            if self._rough_tool_calls > 3:
+                result = json.dumps({'error': {'code': 'search_budget_exhausted',
+                    'message': '粗略模式工具预算已用完，请根据已有材料立即回答，注明未核验信息。'}},
+                    ensure_ascii=False)
+                raise_for_terminal_tool_result(tool_name, result)
         self.current_step = f'按需调用：{tool_name}'
         self._record_capability_use(tool_name, tool_args)
         try:

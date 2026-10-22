@@ -48,7 +48,7 @@
 |---|---|---|---|---|
 | BASE-01 | 来源注册表辅助、DeepSeek 原生搜索、相关性过滤与官方域有界重试 | 🟡 部分实现 | 2026-10-07 | `src/websearch/deepseek.py`、`src/tools/web_search.py`、`src/tests/test_deepseek_search.py`、`src/tests/test_search_strategy.py`；Messages 原生搜索复用密钥，保留相关性判断、官方域重试、原有每 Agent 15 次搜索保护和重复检查。撤销新增三次共享预算及 URL-only 强制结束，保留自主工具选择和按需委派。`src/websearch/sources.py` 为相关官方结果补齐 HTML 正文，分别统计正文及摘录。真实政策回归取得正文并正确回答文号、日期、范围、税率及废止关系，55.24 秒、四次工具搜索；42 题和广泛政策质量验收仍未完成 |
 | BASE-02 | 官方 URL 来源追踪与 HTML 正文读取 | 🟡 部分实现 | 2026-10-07 | `src/websearch/provenance.py`、`src/websearch/sources.py`、`src/tests/test_official_sources.py`、`src/tests/test_web_search_integration.py`；只读取 DeepSeek 发现的相关官方 HTML，返回正文、最终 URL、时间、哈希和截断标记；并行读取、失败换官方候选、15 分钟有界缓存。测试覆盖财政部/税务页面结构、中文编码、403、跳转/域名边界、缓存、缺正文和大小限制。未恢复旧 daemon/tool/远程 PDF；尚无持久快照、分块和定向回读 |
-| BASE-03 | 附件解析与定位 | 🟡 部分实现 | 2026-09-11 | 支持 PDF、DOCX、Excel、CSV、文本；不支持 Pages，复杂远程文件没有统一缓存索引 |
+| BASE-03 | 附件解析与定位 | 🟡 部分实现 | 2026-10-23 | 支持 PDF、DOCX、XLSX/XLSM、CSV 和文本；新增 `src/attachments/parsers/legacy_excel.py` 与 `.xls` 上传注册，保留表格行定位、非空单元格/工作表限制，不执行宏或重算公式。`src/tests/test_answer_modes.py` 覆盖真实 XLS、限制、API 上传和粗略追问材料恢复。扫描件 OCR、Pages、远程文件统一索引仍未实现 |
 | BASE-04 | 对话持久化 | 🟡 部分实现 | 2026-10-07 | `src/agent/conversations.py` 保存内部与公开上下文，并支持移入 `.trash/` 删除和撤销恢复；`src/web/service.py`、`src/web/app.py` 对历史管理与运行互斥，API 仅返回公开记录；`src/tests/test_conversations.py`、`src/tests/test_xiaochi_web.py` 验证重启后仍删除、恢复原上下文/附件、其他记录不变及运行锁。尚未保存结构化事实、结论、来源和计算状态 |
 | BASE-05 | 来源有效性与引用核验子代理 | 🟡 部分实现 | 2026-09-11 | 已有 Validate/Citation Verifier；主要处理 Markdown，尚无 claim-source 结构化契约 |
 | BASE-06 | CLI、独立 Web 前端与多模型兼容 | ✅ 已完成 | 2026-10-12 | 删除 Gradio 前端；`src/web/app.py`、`src/web/static/` 提供 FastAPI 与独立聊天页；`src/agent/public_answer.py`、`src/agent/cli.py` 统一只展示最终答复及 AI 提示；默认 DeepSeek，保留 Kimi/local；`src/tests/test_cli.py`、`src/tests/test_llm_config.py`、`src/tests/test_xiaochi_web.py`、`src/tests/test_web_search_integration.py` 覆盖接口与启动；`src/web/markdown.py` 与 `src/tests/test_markdown.py` 修复中文标点边界加粗，接口覆盖新答复和历史一致渲染；浏览器确认原问题及书名号开头的加粗标签为 strong、字重 700；`src/agent/progress.py`、`src/web/progress.py` 与前端提供真实阶段和耗时，194 项回归及浏览器检索进度/完成恢复检查通过；浏览器完成 1280×900/390×844 布局、等待与历史恢复验证（截图 `src/workspace/preview/`）。真实模型端到端质量验收仍记录在 BASE-01/CAP-01，不据界面通过推定完成；ASR/TTS 保留：原生麦克风、结论口播、首句预生成与分段播放，见 `src/web/voice.py`、`src/web/static/voice.js`。 `src/voice/text.py`、`narration.py`、`client.py` 过滤仅展示的 AI 尾注，输入/模型输出/缓存/分段边界回归见 `src/tests/test_voice_narration.py`，220项测试通过；真实 DeepSeek/Fish 测试音频及口播文本见 `src/workspace/eval/voice-footer-2026-10-12.*`。 |
@@ -61,7 +61,7 @@
 | XIAOCHI-02 | 税务部门角色、业务配置与报告模板 | 🟡 部分实现 | 2026-10-12 | `src/config/xiaochi.yaml`、`src/prompts/prompts.py` 与报告契约/模板；默认中国内地、结论在前、缺少条件先澄清。正确性与完整性优先，政策答案长度服从所需条件，不为提速强制拒答。`src/evals/xiaochi_smoke.py` 八个真实场景通过，含外籍个人分红正式文件、文号、执行日期、适用范围、税率和旧条款废止核验；一项政策回归不足以完成全面税务质量验收，参考站未成功加载 `business_categories` 与 `web/app.py` 增加三类业务入口配置，前端验证类别及草稿，不据此升级外汇/商务发改业务准确性验收。 |
 | XIAOCHI-03 | 最终答复展示与统一 AI 提示 | ✅ 已完成 | 2026-10-12 | `src/agent/public_answer.py`、`src/web/service.py`、`src/agent/conversations.py`、`src/agent/cli.py`；含思考/工具/专家输出的模拟 agent 验证后端不发送过程，恢复历史同样投影，提示语只追加一次；公开进度仅返回固定阶段、状态与耗时，UUID 区分请求并禁止跨对话查询，完成或失败冻结；`src/tests/test_progress.py`、`src/tests/test_public_answer.py`、`src/tests/test_xiaochi_web.py`、`src/tests/test_cli.py`，浏览器验证等待及最终答复；`followups.py` 与 `test_followups.py` 验证推荐元数据不进入正文，非法/截断区块不暴露，思考/工具/专家不能提供推荐 答复末尾统一提示保留，移除输入框下方重复提示，语音排除该尾注；`src/tests/test_voice_narration.py` 验证公开正文/HTML仍含提示、口播及TTS文本不含提示，业务限制保留。 |
 | XIAOCHI-04 | 本地 .env 加载与密钥隔离 | ✅ 已完成 | 2026-10-12 | `src/config/env.py` 固定仓库路径加载私有 `.env`、环境变量优先；聊天和搜索共享加载；`.gitignore` 覆盖且本机文件为 0600；`src/tests/test_env.py` 验证路径、优先级、共享凭据及缺失文件；真实调用验证成功，代码、报告及运行日志扫描未发现密钥值；部署模板 `.env.example` 仅含空凭据字段，`.gitignore` 显式允许模板并继续忽略私有环境文件；中英文 README 与运行/语音文档说明固定加载路径、环境优先级、密钥文件入口及 ASR 不加载 `.env` 的边界。环境与模型配置8项回归通过，启动帮助与无外部调用的配置检查通过 |
-| XIAOCHI-05 | 每轮三个相关问题 | ✅ 已完成 | 2026-10-08 | `src/agent/followups.py`、`public_answer.py`、`src/web/service.py`、`static/app.js`：同轮生成、严格校验、按场景兜底、公开历史持久化；不增加独立模型请求或工具流程。`src/tests/test_followups.py` 与 `test_xiaochi_web.py` 覆盖异常元数据、内部信息隔离、新答复/恢复/删除撤销；真实计算和虚拟材料两项均返回模型生成的三个问题，点击填入及刷新一致。广泛推荐质量仍需后续样本迭代 |
+| XIAOCHI-05 | 每轮三个相关问题 | ✅ 已完成 | 2026-10-23 | `src/agent/followups.py`、`public_answer.py`、`src/web/service.py`、`static/app.js`：精细模式同轮生成、粗略模式本地兜底、严格校验、按场景兜底、公开历史持久化；不增加独立模型请求或工具流程。`src/tests/test_followups.py` 与 `test_xiaochi_web.py` 覆盖异常元数据、内部信息隔离、新答复/恢复/删除撤销；真实计算和虚拟材料两项均返回模型生成的三个问题，点击填入及刷新一致。广泛推荐质量仍需后续样本迭代 |
 
 这里的完成状态仅针对所述界面与输出边界；当前是串行执行的本地单用户应用，账号、部门权限与多人部署不在本轮验收范围。
 
@@ -71,10 +71,10 @@
 
 - **优先级：P0**
 - **状态：🟡 部分实现**
-- **最后更新：2026-10-07**
+- **最后更新：2026-10-23**
 - **覆盖题目：A01–A12、D08、E05、E06，以及所有短问**
 
-目标：所有问题继续使用 normal 模式，由主 agent 根据任务复杂度自主选择能力；子代理按需调用，不再让所有政策问题固定经过完整流水线。
+目标：保留 normal 执行循环，由请求级粗略/精细策略选择能力。粗略模式限制一次搜索和三个工具调用，不核验来源、不委派专家；精细模式继续自主选择核验能力。完整业务题集的自适应质量仍未验收。
 
 待办：
 
@@ -534,3 +534,12 @@
 - `XIAOCHI-04` 保持已完成，最后更新为2026-10-12。新增根目录 `.env.example`，DeepSeek/Fish 凭据留空，并列出声线、搜索、代理及脚本端口的可选配置；`.gitignore` 仅放行模板，私有 `.env`、`.env.*` 和 `.local/` 仍被忽略。没有复制或更改本机真实密钥。
 - `README.zh-CN.md` 与 `README.md` 补齐 Git/uv/Python3.12、锁定依赖、API 导入、Web/CLI、Fish 朗读、外部 SenseVoice 环境/模型、Linux systemd/SSH 隧道、Windows、更新备份与故障排查；`src/README.md`、`src/docs/voice.md` 同步交叉链接和端口/ASR 环境边界。单用户共享历史与串行执行范围明确，未据文档升级多人部署或政策质量验收。
 - 验证：锁定依赖离线 dry-run 成功；文档内本地链接、代码块与 Bash 语法检查，启动 `--help`、Git ignore 检查和仅输出布尔状态/模型地址的密钥加载检查通过；`src/tests/test_env.py` 与 `src/tests/test_llm_config.py` 共8项通过。未安装额外语音环境、改动运行服务或执行服务器部署；Windows/systemd 示例依据实际入口核对，未在对应系统实机部署。
+
+### 2026-10-23 双模式与 Windows 使用修复
+
+- 新增 XIAOCHI-06 回答模式切换，状态为已完成，最后更新2026-10-23。验收范围为网页切换、请求隔离、粗略跳过核验、精细保留原流程、历史模式及耗时恢复，不据此标记政策正确性或完整42题验收完成。
+- `src/config/answer_mode.py` 用 ContextVar 保存请求策略；`src/agent/main_agent.py` 粗略模式使用精简提示、低推理力度和少量工具，不创建专家；`src/tools/web_search.py` 粗略分支限一次搜索，跳过来源审核、模型评审、官方域重搜和正文抓取。精细提示要求重新核对先前粗略结论。
+- `src/web/service.py` 在粗略推理中剔除历史内部工具轨迹，但保留用户材料、公开答复和完整存储；`app.py` 接收并验证 mode，省略时精细以兼容旧客户端。前端默认粗略、记住选择，回答显示模式和耗时，等待文案改为“已处理”。CLI 不变。
+- 粗略模式停用首句预生成；`src/voice/prepared.py` 在缺少 Fish Key 时直接跳过口播稿准备。删除确认说明附件/日志仍保留。BASE-03新增XLS解析但维持部分实现；XIAOCHI-05的粗略推荐改为本地兜底，精细推荐仍同轮生成。
+- 测试证据：完整228项回归通过（2条既有依赖弃用警告），变更Python文件Ruff、JavaScript语法与git diff检查通过；新增 `test_answer_modes.py` 覆盖模式保存与恢复、异常上下文清理、非法模式拒绝、粗略不调用核验/抓取、搜索及工具预算、配置不污染、XLS实际解析与跨模式材料恢复、无Fish时无额外预生成。浏览器模拟Agent验证粗略/精细提交、处理中禁用选择器、刷新恢复模式和标签。
+- 真实API小样本（2026-10-23，各模式各一次，非统计基准）：给定1130元和13%计算题，粗略2.79秒、精细2.67秒，均返回1000及130且无工具调用；同一官方文件查询，粗略9.94秒、一次搜索，精细51.40秒、三次搜索。后一例减少约80.7%时间，但不能外推为所有问题固定提升。语音预生成未计入该文本比较，未对返回政策条款作全面法律准确性验收。

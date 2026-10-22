@@ -1,6 +1,17 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const state = {id: null, messages: [], attachments: [], busy: false};
+const modePicker = $('answer-mode');
+try {modePicker.value = localStorage.getItem('xiaochi-answer-mode') === 'precise' ? 'precise' : 'rough';} catch (_) {}
+function updateModeHint() {
+  $('answer-mode-hint').textContent = modePicker.value === 'rough'
+    ? '快速答复，不审核资料来源' : '读取原文并核对依据，耗时较长';
+}
+modePicker.addEventListener('change', () => {
+  updateModeHint();
+  try {localStorage.setItem('xiaochi-answer-mode', modePicker.value);} catch (_) {}
+});
+updateModeHint();
 let agentName = '小弛';
 let pendingDelete = null;
 let lastDeleted = null;
@@ -25,6 +36,7 @@ function setBusy(value) {
   $('brand-mascot').dataset.state = value ? 'busy' : 'idle';
   for (const button of document.querySelectorAll('button')) button.disabled = value;
   $('question').readOnly = value;
+  modePicker.disabled = value;
   $('send-button').textContent = value ? '处理中' : '发送';
 }
 function scrollEnd() {
@@ -32,10 +44,12 @@ function scrollEnd() {
   requestAnimationFrame(() => {workspace.scrollTop = workspace.scrollHeight;});
 }
 function closeMenu() { $('sidebar').classList.remove('open'); $('scrim').classList.remove('open'); $('menu-button').setAttribute('aria-expanded', 'false'); }
-function assistantLabel() {
+function assistantLabel(item = {}) {
   const label = document.createElement('div'); label.className = 'assistant-label';
   const name = document.createElement('span'); name.textContent = agentName;
-  const note = document.createElement('span'); note.className = 'answer-caption'; note.textContent = '参考答复';
+  const note = document.createElement('span'); note.className = 'answer-caption';
+  note.textContent = item.mode === 'rough' ? '粗略模式 · 来源未审核' : '精细模式 · 参考答复';
+  if (Number.isFinite(item.elapsed_seconds)) note.textContent += ` · ${item.elapsed_seconds.toFixed(1)}秒`;
   label.append(name, note); return label;
 }
 function renderMessages(waiting = false) {
@@ -49,7 +63,7 @@ function renderMessages(waiting = false) {
       if (item.content) {const bubble = document.createElement('div'); bubble.className = 'user-bubble'; bubble.textContent = item.content; message.append(bubble);}
       for (const name of item.attachments || []) {const file = document.createElement('div'); file.className = 'uploaded'; file.textContent = `▤ ${name}`; message.append(file);}
     } else {
-      message.append(assistantLabel());
+      message.append(assistantLabel(item));
       const answer = document.createElement('div'); answer.className = 'answer';
       // Only server-rendered Markdown (HTML disabled) is accepted here.
       if (item.html) answer.innerHTML = item.html; else answer.textContent = item.content;
@@ -72,11 +86,11 @@ function renderMessages(waiting = false) {
     $('messages').append(message);
   }
   if (waiting) {
-    const article = document.createElement('article'); article.className = 'message assistant'; article.append(assistantLabel());
+    const article = document.createElement('article'); article.className = 'message assistant'; article.append(assistantLabel({mode:modePicker.value}));
     const text = document.createElement('div'); text.className = 'waiting'; text.setAttribute('role', 'status');
     const phase = document.createElement('span'); phase.id = 'progress-text'; phase.textContent = `${agentName}正在理解问题……`;
     const elapsed = document.createElement('small'); elapsed.id = 'progress-elapsed'; elapsed.className = 'waiting-elapsed'; elapsed.setAttribute('aria-hidden', 'true');
-    elapsed.textContent = '已深度思考 0 秒';
+    elapsed.textContent = '已处理 0 秒';
     text.append(phase, elapsed); article.append(text); $('messages').append(article);
   }
   scrollEnd();
@@ -86,7 +100,7 @@ function watchProgress(conversationId, requestId) {
   const started = performance.now();
   const tick = async () => {
     const elapsed = $('progress-elapsed');
-    if (elapsed) elapsed.textContent = `已深度思考 ${Math.floor((performance.now() - started) / 1000)} 秒`;
+    if (elapsed) elapsed.textContent = `已处理 ${Math.floor((performance.now() - started) / 1000)} 秒`;
     if (stopped || polling) return;
     polling = true;
     try {
@@ -218,9 +232,9 @@ $('chat-form').addEventListener('submit', async event => {
     await ensureConversation();
     const requestId = crypto.randomUUID();
     stopProgress = watchProgress(state.id, requestId);
-    const response = await api(`/api/conversations/${state.id}/messages`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:text, attachments:files.map(item => item.id), request_id:requestId})});
+    const response = await api(`/api/conversations/${state.id}/messages`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:text, attachments:files.map(item => item.id), request_id:requestId, mode:modePicker.value})});
     committed = true;
-    state.messages.push({role:'assistant', content:response.answer, html:response.answer_html, related_questions:response.related_questions});
+    state.messages.push({role:'assistant', content:response.answer, html:response.answer_html, related_questions:response.related_questions, mode:response.mode, elapsed_seconds:response.elapsed_seconds});
     state.attachments = []; renderAttachments(); renderMessages();
     await refreshHistory();
   } catch (error) {
