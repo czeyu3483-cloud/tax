@@ -31,6 +31,7 @@
 | 🚧 进行中 | 当前工作正在实现，尚未完成验收 |
 | ⬜ 未开始 | 尚无针对性实现 |
 | ⛔ 阻塞 | 存在明确外部依赖，记录阻塞原因和解除条件 |
+| ↪ 已替代 | 历史方案停止使用，当前行为由指定的新能力项承接 |
 
 ## 3. 测试题能力地图
 
@@ -48,21 +49,24 @@
 |---|---|---|---|---|
 | BASE-01 | 来源注册表辅助、DeepSeek 原生搜索、相关性过滤与官方域有界重试 | 🟡 部分实现 | 2026-10-07 | `src/websearch/deepseek.py`、`src/tools/web_search.py`、`src/tests/test_deepseek_search.py`、`src/tests/test_search_strategy.py`；Messages 原生搜索复用密钥，保留相关性判断、官方域重试、原有每 Agent 15 次搜索保护和重复检查。撤销新增三次共享预算及 URL-only 强制结束，保留自主工具选择和按需委派。`src/websearch/sources.py` 为相关官方结果补齐 HTML 正文，分别统计正文及摘录。真实政策回归取得正文并正确回答文号、日期、范围、税率及废止关系，55.24 秒、四次工具搜索；42 题和广泛政策质量验收仍未完成 |
 | BASE-02 | 官方 URL 来源追踪与 HTML 正文读取 | 🟡 部分实现 | 2026-10-07 | `src/websearch/provenance.py`、`src/websearch/sources.py`、`src/tests/test_official_sources.py`、`src/tests/test_web_search_integration.py`；只读取 DeepSeek 发现的相关官方 HTML，返回正文、最终 URL、时间、哈希和截断标记；并行读取、失败换官方候选、15 分钟有界缓存。测试覆盖财政部/税务页面结构、中文编码、403、跳转/域名边界、缓存、缺正文和大小限制。未恢复旧 daemon/tool/远程 PDF；尚无持久快照、分块和定向回读 |
-| BASE-03 | 附件解析与定位 | 🟡 部分实现 | 2026-10-23 | 支持 PDF、DOCX、XLSX/XLSM、CSV 和文本；新增 `src/attachments/parsers/legacy_excel.py` 与 `.xls` 上传注册，保留表格行定位、非空单元格/工作表限制，不执行宏或重算公式。`src/tests/test_answer_modes.py` 覆盖真实 XLS、限制、API 上传和快速答复追问材料恢复。扫描件 OCR、Pages、远程文件统一索引仍未实现 |
-| BASE-04 | 对话持久化 | 🟡 部分实现 | 2026-10-07 | `src/agent/conversations.py` 保存内部与公开上下文，并支持移入 `.trash/` 删除和撤销恢复；`src/web/service.py`、`src/web/app.py` 对历史管理与运行互斥，API 仅返回公开记录；`src/tests/test_conversations.py`、`src/tests/test_xiaochi_web.py` 验证重启后仍删除、恢复原上下文/附件、其他记录不变及运行锁。尚未保存结构化事实、结论、来源和计算状态 |
-| BASE-05 | 来源有效性与引用核验子代理 | 🟡 部分实现 | 2026-09-11 | 已有 Validate/Citation Verifier；主要处理 Markdown，尚无 claim-source 结构化契约 |
+| BASE-03 | 附件解析与定位 | 🟡 部分实现 | 2026-10-23 | 支持 PDF、DOCX、XLSX/XLSM、CSV 和文本；新增 `src/attachments/parsers/legacy_excel.py` 与 `.xls` 上传注册，保留表格行定位、非空单元格/工作表限制，不执行宏或重算公式。`src/tests/test_answer_modes.py` 覆盖真实 XLS、限制、API 上传和跨轮材料恢复。扫描件 OCR、Pages、远程文件统一索引仍未实现 |
+| BASE-04 | 对话与案例提交记录持久化 | 🟡 部分实现 | 2026-10-25 | `src/agent/conversations.py`、`src/agent/case_workflow.py`、`src/web/service.py` 保存内部/公开上下文及案例提交、回答、跳过、初步处理倾向、待答问题和分析版本；切换模式保留附件和记录。`src/tests/test_case_workflow.py`、`src/tests/test_conversations.py`、`src/tests/test_xiaochi_web.py` 覆盖状态与历史边界。用户记录仍为待核实陈述；尚无完整事实核验、结论依赖与计算状态档案 |
+| BASE-05 | 来源有效性与引用核验 | 🟡 部分实现 | 2026-10-25 | 原 Validate/Citation Verifier 保留；新增 `src/agent/case_workflow.py` 引用结构，区分模型建议、实际取得原文和可信政策库历史核验记录。`src/tests/test_case_workflow.py` 覆盖否定、日期、局部修订、冲突版本和元数据冒充边界；无证据保持待核验。引用 URL 必须来自实际工具结果、已提交用户链接或可信库，正文缺来源引用显示待核实提示；代码/引文/草稿不泛删。尚无完整 claim-source 契约或自动法律效力认证 |
 | BASE-06 | CLI、独立 Web 前端与多模型兼容 | ✅ 已完成 | 2026-10-23 | 删除 Gradio 前端；`src/web/app.py`、`src/web/static/` 提供 FastAPI 与独立聊天页；`src/agent/public_answer.py`、`src/agent/cli.py` 统一只展示最终答复及 AI 提示；默认 DeepSeek，保留 Kimi/local；`src/tests/test_cli.py`、`src/tests/test_llm_config.py`、`src/tests/test_xiaochi_web.py`、`src/tests/test_web_search_integration.py` 覆盖接口与启动；`src/web/markdown.py` 与 `src/tests/test_markdown.py` 修复中文标点边界加粗，接口覆盖新答复和历史一致渲染；浏览器确认原问题及书名号开头的加粗标签为 strong、字重 700；`src/agent/progress.py`、`src/web/progress.py` 与前端提供真实阶段和耗时，194 项回归及浏览器检索进度/完成恢复检查通过；浏览器完成 1280×900/390×844 布局、等待与历史恢复验证（截图 `src/workspace/preview/`）。真实模型端到端质量验收仍记录在 BASE-01/CAP-01，不据界面通过推定完成；ASR/TTS 保留：原生麦克风、结论口播、首句预生成与分段播放，见 `src/web/voice.py`、`src/web/static/voice.js`。 `src/voice/text.py`、`narration.py`、`client.py` 过滤仅展示的 AI 尾注，输入/模型输出/缓存/分段边界回归见 `src/tests/test_voice_narration.py`，220项测试通过；真实 DeepSeek/Fish 测试音频及口播文本见 `src/workspace/eval/voice-footer-2026-10-12.*`。  政务用语统一及旧提示兼容证据见2026-10-23“政务工作用语统一”记录；原有质量验收范围不变。 |
 
 ### 小弛产品重构（2026-10-07）
 
 | 编号 | 能力 | 状态 | 最后更新 | 实现证据与验收边界 |
 |---|---|---|---|---|
-| XIAOCHI-01 | 独立税务聊天前端 | ✅ 已完成 | 2026-10-23 | `src/web/static/index.html`、`style.css`、`app.js`：深蓝侧栏、浅蓝咨询区、红色业务图标/标题强调和 SVG 资料装饰；入场、悬停、聚焦、蓝色等待转圈及录音状态动效，系统减少动态效果时全部停用。历史/附件/复制/三个推荐保留，删除提示8秒自动收起。浏览器检查1280px桌面、1024px平板、390px手机无横向溢出、首页卡片和输入区不重叠，业务入口/推荐填入与历史恢复正常；截图 `src/workspace/preview/xiaochi-blue-red-home.jpg`、`xiaochi-blue-red-answer.jpg`、`xiaochi-blue-red-mobile.jpg`。图标来源见 `src/web/static/icons/`，删除提示证据见实现记录 按浏览器反馈移除历史红边、品牌红线及右侧卡片顶部蓝红线；官方入口图标新增悬停/键盘聚焦抬起、缩放与扫光，验证截图 `src/workspace/preview/xiaochi-clean-accents.jpg`。 首页顶部与栏目标签装饰线移除；等待转圈与阶段/耗时并列，独立模拟预览证据 `src/workspace/preview/xiaochi-home-no-topline.jpg`、`xiaochi-waiting-spinner.jpg`。 侧栏新增用户参考形象生成的动态 Q 版小人，素材/样式/来源见 `src/web/static/mascot/`，状态接入 `app.js`；眨眼、挥手、忙碌恢复、后台/手机侧栏暂停及减少动态效果通过浏览器检查，1280/1024/390px 无溢出，17项 Web 测试通过；证据 `src/workspace/preview/xiaochi-mascot-check.json`。 首页新增税收/外汇/商务发改三类十二项入口、外汇局/发改委官方图标；输入框约190px高，移除上方标题与底部重复提示。1412/1024/390px无溢出与重叠，切换保留草稿、事项填入及历史恢复正常；证据 `src/workspace/preview/xiaochi-business-home.jpg`、`xiaochi-business-mobile.jpg`。 小人放大25%，通过帧间裁切修复挥手时头顶漏出的上一行鞋底，四帧及桌面/平板/手机复验见同检查记录。  政务用语统一及旧提示兼容证据见2026-10-23“政务工作用语统一”记录；原有质量验收范围不变。 |
-| XIAOCHI-02 | 税务部门角色、业务配置与报告模板 | 🟡 部分实现 | 2026-10-23 | `src/config/xiaochi.yaml`、`src/prompts/prompts.py` 与报告契约/模板；默认中国内地、结论在前、缺少条件先澄清。正确性与完整性优先，政策答案长度服从所需条件，不为提速强制拒答。`src/evals/xiaochi_smoke.py` 八个真实场景通过，含外籍个人分红正式文件、文号、执行日期、适用范围、税率和旧条款废止核验；一项政策回归不足以完成全面税务质量验收，参考站未成功加载 `business_categories` 与 `web/app.py` 增加三类业务入口配置，前端验证类别及草稿，不据此升级外汇/商务发改业务准确性验收。  政务用语统一及旧提示兼容证据见2026-10-23“政务工作用语统一”记录；原有质量验收范围不变。 |
-| XIAOCHI-03 | 最终答复展示与统一 AI 提示 | ✅ 已完成 | 2026-10-23 | `src/agent/public_answer.py`、`src/web/service.py`、`src/agent/conversations.py`、`src/agent/cli.py`；含思考/工具/专家输出的模拟 agent 验证后端不发送过程，恢复历史同样投影，提示语只追加一次；公开进度仅返回固定阶段、状态与耗时，UUID 区分请求并禁止跨对话查询，完成或失败冻结；`src/tests/test_progress.py`、`src/tests/test_public_answer.py`、`src/tests/test_xiaochi_web.py`、`src/tests/test_cli.py`，浏览器验证等待及最终答复；`followups.py` 与 `test_followups.py` 验证推荐元数据不进入正文，非法/截断区块不暴露，思考/工具/专家不能提供推荐 答复末尾统一提示保留，移除输入框下方重复提示，语音排除该尾注；`src/tests/test_voice_narration.py` 验证公开正文/HTML仍含提示、口播及TTS文本不含提示，业务限制保留。  政务用语统一及旧提示兼容证据见2026-10-23“政务工作用语统一”记录；原有质量验收范围不变。 |
+| XIAOCHI-01 | 独立政务聊天前端 | ✅ 已完成 | 2026-10-25 | `src/web/static/index.html`、`style.css`、`app.js`：深蓝侧栏、浅蓝咨询区、红色业务图标/标题强调和 SVG 资料装饰；入场、悬停、聚焦、蓝色等待转圈及录音状态动效，系统减少动态效果时全部停用。历史/附件/复制保留，旧三问推荐现由 XIAOCHI-07 的两问澄清取代，删除提示8秒自动收起。浏览器检查1280px桌面、1024px平板、390px手机无横向溢出、首页卡片和输入区不重叠，业务入口/推荐填入与历史恢复正常；截图 `src/workspace/preview/xiaochi-blue-red-home.jpg`、`xiaochi-blue-red-answer.jpg`、`xiaochi-blue-red-mobile.jpg`。图标来源见 `src/web/static/icons/`，删除提示证据见实现记录 按浏览器反馈移除历史红边、品牌红线及右侧卡片顶部蓝红线；官方入口图标新增悬停/键盘聚焦抬起、缩放与扫光，验证截图 `src/workspace/preview/xiaochi-clean-accents.jpg`。 首页顶部与栏目标签装饰线移除；等待转圈与阶段/耗时并列，独立模拟预览证据 `src/workspace/preview/xiaochi-home-no-topline.jpg`、`xiaochi-waiting-spinner.jpg`。 侧栏新增用户参考形象生成的动态 Q 版小人，素材/样式/来源见 `src/web/static/mascot/`，状态接入 `app.js`；眨眼、挥手、忙碌恢复、后台/手机侧栏暂停及减少动态效果通过浏览器检查，1280/1024/390px 无溢出，17项 Web 测试通过；证据 `src/workspace/preview/xiaochi-mascot-check.json`。 首页新增税收/外汇/商务发改三类十二项入口、外汇局/发改委官方图标；输入框约190px高，移除上方标题与底部重复提示。1412/1024/390px无溢出与重叠，切换保留草稿、事项填入及历史恢复正常；证据 `src/workspace/preview/xiaochi-business-home.jpg`、`xiaochi-business-mobile.jpg`。 小人放大25%，通过帧间裁切修复挥手时头顶漏出的上一行鞋底，四帧及桌面/平板/手机复验见同检查记录。  政务用语统一及旧提示兼容证据见2026-10-23“政务工作用语统一”记录；原有质量验收范围不变。 |
+| XIAOCHI-02 | 政务业务角色、业务配置与报告模板 | 🟡 部分实现 | 2026-10-25 | `src/config/xiaochi.yaml`、`src/prompts/prompts.py` 与报告契约/模板；默认中国内地、结论在前、缺少条件先澄清。正确性与完整性优先，政策答案长度服从所需条件，不为提速强制拒答。`src/evals/xiaochi_smoke.py` 八个真实场景通过，含外籍个人分红正式文件、文号、执行日期、适用范围、税率和旧条款废止核验；一项政策回归不足以完成全面税务质量验收，参考站未成功加载 `business_categories` 与 `web/app.py` 增加三类业务入口配置，前端验证类别及草稿，不据此升级外汇/商务发改业务准确性验收。  政务用语统一及旧提示兼容证据见2026-10-23“政务工作用语统一”记录；原有质量验收范围不变。 新增 `CASE_ANALYSIS_PROMPT` 与三模式提示：处理倾向不代替事实、每轮最多两问、未知条件分支；广泛政务业务准确性仍未验收。 |
+| XIAOCHI-03 | 最终答复展示与统一 AI 提示 | ✅ 已完成 | 2026-10-25 | `src/agent/public_answer.py`、`src/web/service.py`、`src/agent/conversations.py`、`src/agent/cli.py`；含思考/工具/专家输出的模拟 agent 验证后端不发送过程，恢复历史同样投影，提示语只追加一次；公开进度仅返回固定阶段、状态与耗时，UUID 区分请求并禁止跨对话查询，完成或失败冻结；`src/tests/test_progress.py`、`src/tests/test_public_answer.py`、`src/tests/test_xiaochi_web.py`、`src/tests/test_cli.py`，浏览器验证等待及最终答复；`followups.py` 与 `test_followups.py` 验证推荐元数据不进入正文，非法/截断区块不暴露，思考/工具/专家不能提供推荐 答复末尾统一提示保留，移除输入框下方重复提示，语音排除该尾注；`src/tests/test_voice_narration.py` 验证公开正文/HTML仍含提示、口播及TTS文本不含提示，业务限制保留。  政务用语统一及旧提示兼容证据见2026-10-23“政务工作用语统一”记录；原有质量验收范围不变。 新交互由 `case_workflow.py` 将澄清和引用元数据与正文分离，`test_case_workflow.py` 与 `test_public_answer.py` 覆盖过滤；新交互集成验证另见 XIAOCHI-07。 |
 | XIAOCHI-04 | 本地 .env 加载与密钥隔离 | ✅ 已完成 | 2026-10-12 | `src/config/env.py` 固定仓库路径加载私有 `.env`、环境变量优先；聊天和搜索共享加载；`.gitignore` 覆盖且本机文件为 0600；`src/tests/test_env.py` 验证路径、优先级、共享凭据及缺失文件；真实调用验证成功，代码、报告及运行日志扫描未发现密钥值；部署模板 `.env.example` 仅含空凭据字段，`.gitignore` 显式允许模板并继续忽略私有环境文件；中英文 README 与运行/语音文档说明固定加载路径、环境优先级、密钥文件入口及 ASR 不加载 `.env` 的边界。环境与模型配置8项回归通过，启动帮助与无外部调用的配置检查通过 |
-| XIAOCHI-05 | 每轮三个相关问题 | ✅ 已完成 | 2026-10-23 | `src/agent/followups.py`、`public_answer.py`、`src/web/service.py`、`static/app.js`：深入研判同轮生成、快速答复本地兜底、严格校验、按场景兜底、公开历史持久化；不增加独立模型请求或工具流程。`src/tests/test_followups.py` 与 `test_xiaochi_web.py` 覆盖异常元数据、内部信息隔离、新答复/恢复/删除撤销；真实计算和虚拟材料两项均返回模型生成的三个问题，点击填入及刷新一致。广泛推荐质量仍需后续样本迭代 |
-| XIAOCHI-06 | 答复方式切换 | ✅ 已完成 | 2026-10-23 | “快速答复”与“深入研判”统一用于页面、提示词和文档；保留 `rough` / `precise` 接口标识与历史记录兼容。`src/tests/test_answer_modes.py` 验证模式隔离与检索边界；本项仅验收切换功能，不代表政策正确性验收。 |
+| XIAOCHI-05 | 历史三问推荐（已被两问澄清取代） | ↪ 已替代 | 2026-10-25 | 原三问实现及验收证据保留在历史实现记录。当前消息 `related_questions` 固定为空数组，不再生成三项兜底；新的条件化澄清和问答持久化归入 XIAOCHI-07。相关文件：`src/agent/case_workflow.py`、`src/web/service.py`、`src/web/static/app.js` |
+| XIAOCHI-06 | 三种研判模式切换 | 🟡 部分实现 | 2026-10-25 | `src/config/answer_mode.py`、`src/prompts/prompts.py`、`src/tools/web_search.py` 和前端实现即时答复/互动研判/审慎研判；保留 rough/precise 并新增 interactive，网页默认互动研判，API 省略模式仍 precise。`src/tests/test_answer_modes.py` 的 32 项针对性回归通过；四次真实调用已验证各模式及按现有信息分析的问数边界（0/2/0/0）；最终离线回归 315 项通过，广泛业务质量仍未验收，本项不代表政策正确性验收 |
+| XIAOCHI-07 | 两问澄清、处理倾向与按现有信息分析 | 🟡 部分实现 | 2026-10-25 | `src/agent/case_workflow.py`、`src/web/app.py`、`src/web/service.py`、`src/web/static/app.js` 实现最多两问、选项/自由输入/跳过、当前问题 ID 校验、未提交草稿隔离、倾向与版本保存。按现有信息分析关闭本轮追问，未知事实不自动补齐；`src/tests/test_case_workflow.py`、`src/tests/test_case_frontend.cjs` 提供状态和界面回归，前端针对性测试通过；独立模拟接口浏览器 1280×720 已检查两问/选项/自由输入/倾向/分析按钮/历史恢复；真实复杂案例与完整可访问性仍待验收 |
+| XIAOCHI-08 | 空公开政策库与条款索引基础 | 🟡 部分实现 | 2026-10-25 | `src/policy/store.py`、`src/web/app.py` 自动建空 SQLite 库，默认 `src/workspace/policy_data/policy.sqlite3`；条款 FTS、文号检索、范围/日期筛选、版本关系和效力证据，写入替换删除同步索引。`src/tests/test_policy_store.py` 的 27 项离线测试通过。按当前范围不导入真实/演示政策，无前端入口或导入 API；embedding 接口可注入但默认未配置，不宣称语义检索或有资料的 RAG 已就绪 |
+| XIAOCHI-09 | 政策动态与案例关联复核入口 | 🟡 部分实现 | 2026-10-25 | `src/policy/news.py`、`news_routes.py`、`src/web/static/app.js` 实现提问异步查询、手动刷新、分类/发布日期/领域/地区筛选、明确施行日期线索及将来源带入当前案例。独立内存缓存；服务存活时每六小时刷新已有主题，仅发送粗业务关键词，不导入政策库。`src/tests/test_policy_news.py` 覆盖相关边界；15 项动态测试及最终 315 项回归通过，原偶发失败属于测试线程等待方式，已使用 Event 有界等待修复；真实查询 7.3 秒返回 8 条且无错误；动态和摘要均是待核实线索，不能作为有效政策依据 |
 
 这里的完成状态仅针对所述界面与输出边界；当前是串行执行的本地单用户应用，账号、部门权限与多人部署不在本轮验收范围。
 
@@ -72,10 +76,10 @@
 
 - **优先级：P0**
 - **状态：🟡 部分实现**
-- **最后更新：2026-10-23**
+- **最后更新：2026-10-25**
 - **覆盖题目：A01–A12、D08、E05、E06，以及所有短问**
 
-目标：保留 normal 执行循环，由请求级快速答复/深入研判策略选择能力。快速答复限制一次搜索和三个工具调用，不核验来源、不委派专家；深入研判继续自主选择核验能力。完整业务题集的自适应质量仍未验收。
+目标：保留 normal 执行循环，由请求级即时答复/互动研判/审慎研判策略选择能力。前两者限制一次轻量搜索和三个工具调用，不核验来源、不委派专家；审慎研判继续自主选择核验能力。澄清最多两问，按现有信息分析关闭本轮追问；完整业务题集的自适应质量仍未验收。
 
 待办：
 
@@ -97,11 +101,13 @@
 
 补充评测：`src/evals/xiaochi_smoke.py` 八个真实场景通过，简单算术、附件、改写和跨境澄清不触发无关检索；政策问题保留自主研究并取得官方正文。已撤销新增的共享预算和 URL-only 强制收尾，进度通知只观察执行阶段。该样本尚不覆盖全部 A–E 验收标准，状态保持部分实现。
 
+2026-10-25 补充：`src/config/answer_mode.py` 与 `src/tests/test_answer_modes.py` 覆盖三模式、工具边界和跨模式上下文；32 项针对性回归通过。模式策略可用不代表全部 A–E 业务验收完成。
+
 ### CAP-02：回答约束、错误前提与最小澄清
 
 - **优先级：P0**
 - **状态：🟡 部分实现**
-- **最后更新：2026-10-07**
+- **最后更新：2026-10-25**
 - **覆盖题目：A02、A05、A08、A10、E01–E03、E05**
 
 目标：研究前抽取用户的范围、日期、字数、语言、引用、计算和禁止扩展要求；区分事实、假设、用户主张和待核实前提。
@@ -116,15 +122,17 @@
 
 验收标准：E01 拒绝“统一按20%”的错误概括；E02 先确认法域、资产与角色；E03 不用无关资料填充；所有限字和不扩展要求得到遵守。
 
-实现证据：`src/config/xiaochi.yaml` 和 `src/prompts/prompts.py` 增加税务部门场景、首轮最多三项关键事实澄清、区分政策/推论/草稿与简洁答复；`src/tests/test_xiaochi_web.py` 验证身份与默认法域，`src/evals/xiaochi_smoke.py` 的真实 missing_facts 与 cross_border_clarification 场景通过，未列未经核实税率；增加普通咨询约 300 字及不扩展未问事项的约束。购房问题先询问身份、地区和资金条件，2.34 秒、无检索工具调用；这一变化缩小首轮范围，不代表完整政策分析等深度加速。尚无结构化 AnswerContract 或完整错误前提/限字评测，保持部分实现。
+实现证据：`src/config/xiaochi.yaml` 和 `src/prompts/prompts.py` 增加税务部门场景、首轮关键事实澄清（现已升级为每轮最多两问）、区分政策/推论/草稿与简洁答复；`src/tests/test_xiaochi_web.py` 验证身份与默认法域，`src/evals/xiaochi_smoke.py` 的真实 missing_facts 与 cross_border_clarification 场景通过，未列未经核实税率；增加普通咨询约 300 字及不扩展未问事项的约束。购房问题先询问身份、地区和资金条件，2.34 秒、无检索工具调用；这一变化缩小首轮范围，不代表完整政策分析等深度加速。尚无结构化 AnswerContract 或完整错误前提/限字评测，保持部分实现。
 
 2026-10-07 纠正：政策解释不能以缺口短答代替可查得的结论。提示词要求读取官方正文，失败换同文件其他官方来源，再报告具体缺口；正文长短服从正确性和适用条件。评测不再将拒答算成功，新增正式文件、执行日期、主体范围、税率及废止关系断言；用户政策问句真实通过。完整约束和错误前提题组仍待验收。
+
+2026-10-25 补充：`src/agent/case_workflow.py`、`src/prompts/prompts.py` 和消息协议实现每轮最多两问、选项/自由输入/跳过、可选处理倾向与按现有信息分析。`src/tests/test_case_workflow.py`、`src/tests/test_case_frontend.cjs` 覆盖问题上限、过期答案拒绝、草稿恢复、倾向不作为事实、未知信息保留和元数据边界。完整 AnswerContract、错误前提及限字题组仍待验收，保持部分实现。
 
 ### CAP-03：结构化证据账本与结论级引用
 
 - **优先级：P0**
-- **状态：⬜ 未开始**
-- **最后更新：2026-09-12**
+- **状态：🟡 部分实现**
+- **最后更新：2026-10-25**
 - **覆盖题目：全部；重点 B03、B04、E04、E06**
 
 目标：使用结构化 `Claim`、`Source`、`EvidenceSpan` 和 `Inference`，替代仅靠 Markdown 在代理之间传递证据。
@@ -147,7 +155,7 @@
 
 验收标准：E06 能逐条给出原文支持；B03 能区分直接规定、作者解释和争议判断；缺少直接支持时自动降低结论等级。
 
-实现证据：待补充。可复用 `sqlite-fts-rag-plan.md` 中的 EvidencePack 设计。
+实现证据：`src/agent/case_workflow.py` 提供结构化引用字段、原文取得状态、模型建议与可信历史效力记录分离；`src/policy/store.py` 提供条款、原文定位、版本关系及效力证据数据层，默认空库。`src/tests/test_case_workflow.py` 覆盖模型不能冒充核验、冲突版本保持待核验，以及引用 URL 来源过滤、缺来源提示和代码/引文/草稿保留；`src/tests/test_policy_store.py` 的 27 项离线测试通过。尚无全链路 Claim/Source/EvidenceSpan/Inference 契约、逐 claim 验证或仅消费已验证结论的报告生成，状态保持部分实现。
 
 ### CAP-04：远程文档缓存、分块索引与定向回读
 
@@ -263,7 +271,7 @@
 
 - **优先级：P1**
 - **状态：🟡 部分实现**
-- **最后更新：2026-09-12**
+- **最后更新：2026-10-25**
 - **覆盖题目：B04、C08–C10、D10、E05、E06**
 
 目标：会话除消息外，还保存结构化事实、claim、来源版本、未决问题和计算状态；后续问题只重做受变化影响的部分。
@@ -278,7 +286,7 @@
 
 验收标准：C08 只增加美国公民身份相关分析；D10 只重做英国居民地分支；B04 明确哪些结论不变、哪些需要重研；E05 不重复调用网络。
 
-实现证据：已有 JSON 会话消息存储，尚无研究档案。
+实现证据：`src/agent/case_workflow.py`、`src/agent/conversations.py`、`src/web/service.py` 保存案例提交版本、材料记录、问答/跳过、处理倾向与分析版本；同一会话跨模式复用，不将用户陈述升级为已核实事实。`src/tests/test_case_workflow.py` 和 `src/tests/test_case_frontend.cjs` 覆盖提交、停止追问、继续补充与历史恢复。当前只是研究档案基础；未建立事实差异、结论依赖图或仅重做受影响分支的确定性执行，不满足全部验收标准。
 
 ### CAP-10：多语言法规对齐
 
@@ -348,6 +356,29 @@
 ## 7. 实现记录
 
 按时间倒序追加。每条记录应关联能力编号、代码或测试证据，并说明状态变化。
+
+### 2026-10-25：最终回归与交付检查
+
+- 最终完整离线回归 **315 passed**，耗时 **12.81 秒**，2 项既有依赖弃用警告；本地证据 `.local/case-tests-complete.txt`。使用仓库内独立 `--basetemp` 解决默认沙盒临时目录不可写，该环境限制不是产品缺陷。改动 Python 的定向 Ruff（`--ignore B008`）、前端交互测试、`node --check` 和 `git diff --check` 全部通过。
+- `BASE-05`、`CAP-03`：`src/agent/case_workflow.py`、`src/web/service.py` 将引用 URL 限定为实际工具结果、用户提交 URL 或可信库来源；用户链接仍仅为线索。正文显式政策引用无来源时提示“来源未取得，待核实”，避免泛删代码、引文或草稿；相关回归加入 `src/tests/test_case_workflow.py`。此边界不能替代完整法律效力审核，状态保持部分实现。
+- `XIAOCHI-09`：真实 `NewsService` 查询 7.3 秒返回 8 条动态、`error=null`，未核实来源和日期保持待核实。15 项动态测试通过；先前失败来自短轮询等待后台线程的不稳定，改为 Event 有界等待，生产逻辑未发现相应故障。本周/月按上海时区周一和日历月筛选，跨月、跨年边界测试通过。动态不做精确案例适用性判断。
+- `XIAOCHI-08`：运行库 `src/workspace/policy_data/policy.sqlite3` 实际初始化后 documents=0、clauses=0，确认无真实或演示导入。embedding 未配置、无前端入口及导入 API，资讯缓存不写入库。
+- `BASE-06`：现有 `XiaochiLauncher.exe --self-test` 实际启动新版后端成功，退出码 0 并回收子进程。以上交付检查不升级全面政务质量、完整证据账本或增量结论依赖执行的验收状态。
+
+### 2026-10-25：真实调用与界面验证补充
+
+- `XIAOCHI-06/07`：本地 `.local/case-live-smoke.json` 保存四次真实模型调用；即时答复 3.42 秒/0 问、互动研判 7.64 秒/2 问、互动按现有信息分析 9.99 秒/0 问、审慎按现有信息分析 86.75 秒/0 问/2 条引用。模式和任务不同，不能比较单次耗时来宣称整体提速。
+- `BASE-02/05`、`CAP-03`：审慎请求原官方网页未读取成功，转读取商务部官方转载；公布日期和后续效力保留待核验。此次证据证明来源查找及未核实事项披露，不代表全面法律正确性或完整证据账本验收。
+- `XIAOCHI-07/08/09`：1280×720 独立模拟接口浏览器检查两题选项与自由输入、倾向、按现有信息分析、历史恢复、政策动态及来源详情折叠，确认库入口隐藏。仅验证界面交互，不扩大真实数据、政策有效性或自动采集能力范围。
+- 最终完整离线回归：315 项通过（12.81 秒），2 项既有依赖弃用警告。先前定时刷新测试的短轮询偶发失败已改为 Event 有界等待，15 项动态测试通过，生产逻辑未发现相应故障。政策库仍无导入资料，embedding 未配置，动态原始摘要仍仅是线索，定期刷新仅在应用进程运行时执行。
+
+### 2026-10-25：三模式案例交互、空政策库与政策动态
+
+- `XIAOCHI-05/06/07`：旧三问推荐由最多两问的选项/自由输入澄清替代；即时答复不追问，互动研判不核验来源，审慎研判保留官方来源研究。新增初步处理倾向、按现有信息分析、跨模式案例状态和分析版本；前端默认 interactive，API 默认仍 precise。主要证据：`src/config/answer_mode.py`、`src/agent/case_workflow.py`、`src/web/service.py`、`src/web/static/app.js` 及模式/案例/前端测试。
+- `BASE-04/05`、`CAP-02/03/09`：提交记录不是已查证事实；引用卡片分开模型建议、实际原文摘录和可信历史核验记录，无可信证据保持待核验。尚未实现完整回答契约、结论级证据账本或增量依赖执行，相关能力保持部分实现。
+- `XIAOCHI-08`：`src/policy/store.py` 自动创建空 SQLite 政策库，提供条款索引、文号/范围筛选、版本与证据接口；无真实或演示导入、无前端入口、无导入 API。未配置 embedding，不将预留接口描述为已就绪语义检索。
+- `XIAOCHI-09`：独立内存政策动态支持提问异步查询、手动刷新、筛选与选择性案例复核；每六小时仅在进程存活时刷新已有主题，不是操作系统任务。动态查询仅使用粗业务关键词，不填充政策库，不将摘要/新闻或明确施行日期线索升级为有效政策依据。
+- 本轮验证：政策存储 27 项、模式 32 项针对性回归及前端交互测试通过；最终完整离线回归 315 项通过，真实业务质量仍未全面验收，不据此宣称全部政策核验能力完成。新增使用及 API 说明：`src/docs/case-workflow.md`；中英文 README、运行说明和 Windows 使用说明同步更新。
 
 ### 2026-10-07
 

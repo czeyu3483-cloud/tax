@@ -4,14 +4,16 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from src.agent.conversations import ConversationStore
 from src.attachments.registry import supported_suffixes
@@ -27,14 +29,27 @@ STATIC_DIR = Path(__file__).with_name('static')
 LOGGER = logging.getLogger(__name__)
 
 
+class ClarificationAnswer(BaseModel):
+    question_id: str = Field(min_length=1, max_length=80)
+    selected_option: str = Field(default='', max_length=140)
+    text: str = Field(default='', max_length=4000)
+    skipped: bool = False
+
+
 class ChatRequest(BaseModel):
     message: str = Field(default='', max_length=20_000)
     attachments: list[str] = Field(default_factory=list, max_length=5)
     request_id: UUID | None = None
     mode: AnswerMode = 'precise'
+    action: Literal['respond', 'analyze_existing'] = 'respond'
+    answers: list[ClarificationAnswer] = Field(default_factory=list, max_length=2)
+    tendency: Literal['undecided', 'support', 'oppose', 'custom'] | None = None
+    tendency_note: str | None = Field(default=None, max_length=2000)
 
 
-def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
+def create_app(*, agent_factory=None, store=None, upload_root=None,
+               news_service=None, enable_news=None) -> FastAPI:
+    production_agent = agent_factory is None
     if agent_factory is None:
         def agent_factory():
             from src.agent.main_agent import MainAgent
@@ -44,7 +59,27 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
     store = store or ConversationStore()
     upload_root = Path(upload_root or WORKSPACE_DIR / 'web_uploads')
     service = ChatService(store, agent_factory, upload_root)
-    app = FastAPI(title='小弛', docs_url=None, redoc_url=None, openapi_url=None)
+    from src.policy.news import NewsService
+    from src.policy.news_routes import build_news_router
+    from src.policy.store import PolicyStore
+    policy_store = PolicyStore(store.root.parent / 'policy_data' / 'policy.sqlite3')
+    news = news_service or NewsService(refresh_interval=6 * 60 * 60)
+    news_enabled = (production_agent or news_service is not None) if enable_news is None else enable_news
+
+    @asynccontextmanager
+    async def lifespan(app):
+        if news_enabled:
+            news.start()
+        try:
+            yield
+        finally:
+            await news.close()
+
+    app = FastAPI(title='小弛', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app.state.policy_store = policy_store
+    app.state.news_service = news
+    # There is intentionally no policy-database UI or public ingestion endpoint.
+    app.include_router(build_news_router(news, conversation_exists=store.load))
     app.state.chat_service = service
     from src.web.voice import install_voice
     prewarm_voice = install_voice(app, service)
@@ -147,14 +182,24 @@ def create_app(*, agent_factory=None, store=None, upload_root=None) -> FastAPI:
         return {'id': upload_id, 'name': name}
 
     @app.post('/api/conversations/{conversation_id}/messages')
-    def chat(conversation_id: str, body: ChatRequest, background_tasks: BackgroundTasks):
-        existing(conversation_id)
+    async def chat(conversation_id: str, body: ChatRequest, background_tasks: BackgroundTasks):
+        record = existing(conversation_id)
         text = body.message.strip()
-        if not text and not body.attachments:
+        if not text and not body.attachments and not body.answers and body.tendency is None and body.action != 'analyze_existing':
             raise HTTPException(400, '请输入咨询事项或上传相关材料。')
         try:
-            result = service.answer(conversation_id, text, body.attachments,
-                                    str(body.request_id) if body.request_id else None, mode=body.mode)
+            if news_enabled:
+                query = text or next((m['content'] for m in reversed(record['messages']) if m['role'] == 'user'), '')
+                if query:
+                    try:
+                        await news.trigger(conversation_id, query)
+                    except Exception:  # noqa: BLE001 - optional provider failures stay isolated
+                        # Optional news scheduling must not fail the user's consultation.
+                        LOGGER.warning('Policy news scheduling unavailable')
+            result = await run_in_threadpool(service.answer, conversation_id, text, body.attachments,
+                                    str(body.request_id) if body.request_id else None, mode=body.mode,
+                                    answers=[a.model_dump() for a in body.answers], tendency=body.tendency,
+                                    tendency_note=body.tendency_note, action=body.action)
         except BusyError as exc:
             raise HTTPException(409, str(exc)) from None
         except MissingAPIKeyError:

@@ -6,6 +6,7 @@ from collections.abc import Iterable
 
 from qwen_agent.llm.schema import Message
 
+from src.agent.case_workflow import split_interaction
 from src.agent.followups import fallback_questions, split_related_questions
 from src.config.product import AGENT_NAME, DISCLAIMER, strip_product_notices
 
@@ -19,6 +20,7 @@ _INTERNAL_BLOCK = re.compile(
 def public_text(text: str) -> str:
     """Remove embedded internal blocks and attach the footer exactly once."""
     text, _ = split_related_questions(_INTERNAL_BLOCK.sub('', text).strip())
+    text, _ = split_interaction(text)
     text = strip_product_notices(text)
     return f'{text or INCOMPLETE_ANSWER}\n\n{DISCLAIMER}'
 
@@ -44,6 +46,10 @@ def _completed_text(messages: Iterable[Message | dict], agent_name: str = AGENT_
 
 def completed_answer(messages: Iterable[Message | dict], agent_name: str = AGENT_NAME) -> str:
     return public_text(_completed_text(messages, agent_name))
+
+
+def completed_interaction(messages, agent_name=AGENT_NAME):
+    return split_interaction(_completed_text(messages, agent_name))
 
 
 def completed_questions(messages: Iterable[Message | dict], question: str,

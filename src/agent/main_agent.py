@@ -13,7 +13,7 @@ from qwen_agent.llm import BaseChatModel
 from qwen_agent.llm.schema import USER, Message
 
 from src.agent.attachments import inline_uploaded_files, supported_formats_hint
-from src.agent.followups import RELATED_QUESTIONS_PROMPT
+from src.agent.case_workflow import case_context_prompt
 from src.agent.progress import progress_stage, report_progress
 from src.agent.subagent import (
     CitationVerifierSubAgent,
@@ -31,12 +31,12 @@ from src.agent.tool_loop_guard import (
     terminal_finalize_prompt,
     tool_free_finalize_messages,
 )
-from src.config.answer_mode import ROUGH_PROMPT, current_mode
+from src.config.answer_mode import INTERACTIVE_PROMPT, ROUGH_PROMPT, current_mode
 from src.config.llm import load_llm_config
 from src.config.logger import attach_run_log
 from src.config.product import AGENT_NAME, PRODUCT
 from src.config.runtime import get_run_dir, new_run_id
-from src.prompts.prompts import MAIN_AGENT_SYS_PROMPT
+from src.prompts.prompts import CASE_INTERACTION_PROMPT, MAIN_AGENT_SYS_PROMPT
 from src.tools.common import parse_tool_params
 from src.tools.delegate_policy_task import DelegatePolicyTask
 from src.tools.read_attachment import AttachmentReadTool  # noqa: F401
@@ -63,8 +63,8 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
         suggest_followups: bool = False,
     ):
         self.answer_mode = current_mode()
-        self._rough_tool_calls = 0
-        if self.answer_mode == 'rough' and isinstance(llm, dict):
+        self._lightweight_tool_calls = 0
+        if self.answer_mode != 'precise' and isinstance(llm, dict):
             llm = copy.deepcopy(llm)
             if str(llm.get('model_server', '')).rstrip('/') in {
                 'https://api.deepseek.com', 'https://api.deepseek.com/v1',
@@ -74,7 +74,7 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
         subagent_tools = ['MarkDownReadTool', 'YamlReadTool', 'AttachmentReadTool']
         retrieval_tools = subagent_tools + ['WebSearchTool']
         verification_tools = subagent_tools + ['WebSearchTool']
-        self.specialists = {} if self.answer_mode == 'rough' else {
+        self.specialists = {} if self.answer_mode != 'precise' else {
             'source_research': RagSubAgent(function_list=retrieval_tools, llm=llm),
             'validity_review': ValidateSubAgent(function_list=verification_tools, llm=llm),
             'tax_analysis': TaxPolicyAnalystSubAgent(function_list=subagent_tools, llm=llm),
@@ -97,20 +97,24 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
             'WriteResult',
             self.delegate_tool,
         ]
-        if self.answer_mode == 'rough':
+        if self.answer_mode != 'precise':
             tools = ['AttachmentReadTool', 'WebSearchTool', 'WriteResult']
-        prompt = ROUGH_PROMPT if self.answer_mode == 'rough' else (
-            MAIN_AGENT_SYS_PROMPT + '\n当前为深入研判。先前对话可能包含未经来源核验的快速答复，'
-            '不可将它们作为已核验依据；对本轮关键政策结论重新核对实际来源，无法核实则明确说明。'
-        )
+        prompt = {
+            'rough': ROUGH_PROMPT,
+            'interactive': INTERACTIVE_PROMPT,
+            'precise': MAIN_AGENT_SYS_PROMPT,
+        }[self.answer_mode]
+        # Keep the entrypoint keyword compatible; questions and citations are now
+        # generated in the same response, never through a follow-up model call.
+        if suggest_followups:
+            prompt += CASE_INTERACTION_PROMPT
+        prompt += '\n' + case_context_prompt()
         super().__init__(
             llm=llm,
             function_list=tools,
             system_message=(prompt + '\n当前日期（北京时间）：'
                             + datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat()
-                            + '。相对日期按此日期理解；用户指定的政策所属期另行遵守。'
-                            + (RELATED_QUESTIONS_PROMPT if suggest_followups
-                               and self.answer_mode != 'rough' else '')),
+                            + '。相对日期按此日期理解；用户指定的政策所属期另行遵守。'),
             name=AGENT_NAME,
             description=PRODUCT['tagline'],
         )
@@ -154,7 +158,7 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
 
         # Start a new run: all artifacts go under workspace/<run_id>/
         new_run_id()
-        self._rough_tool_calls = 0
+        self._lightweight_tool_calls = 0
         register_user_provided_urls(_message_text(messages[-1]))
         attach_run_log(getattr(self.llm, 'model', 'model') or 'model')
 
@@ -198,11 +202,11 @@ class MainAgent(ToolCallCompatibilityMixin, FnCallAgent):
             yield frame
 
     def _call_tool(self, tool_name, tool_args='{}', **kwargs):
-        if getattr(self, 'answer_mode', 'precise') == 'rough':
-            self._rough_tool_calls += 1
-            if self._rough_tool_calls > 3:
+        if getattr(self, 'answer_mode', 'precise') != 'precise':
+            self._lightweight_tool_calls += 1
+            if self._lightweight_tool_calls > 3:
                 result = json.dumps({'error': {'code': 'search_budget_exhausted',
-                    'message': '快速答复工具预算已用完，请根据已有材料立即回答，注明未核验信息。'}},
+                    'message': '本轮轻量工具预算已用完，请根据已有材料立即回答，注明未核验信息，并遵守当前模式及交互元数据要求。'}},
                     ensure_ascii=False)
                 raise_for_terminal_tool_result(tool_name, result)
         self.current_step = f'按需调用：{tool_name}'
@@ -266,4 +270,4 @@ def run_3wagent(model_name=None, provider=None, config_path=None, host='127.0.0.
             model_name=model_name, provider=provider, config_path=config_path,
         ))
 
-    uvicorn.run(create_app(agent_factory=build_agent), host=host, port=port)
+    uvicorn.run(create_app(agent_factory=build_agent, enable_news=True), host=host, port=port)

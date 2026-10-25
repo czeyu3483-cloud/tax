@@ -17,6 +17,25 @@
       <button class="new-chat" id="new-chat"><span aria-hidden="true">＋</span> 新建咨询</button>
       <div class="history-heading">咨询记录 <span id="history-count">0</span></div>
       <nav id="history" aria-label="咨询记录"><p class="history-empty">暂无咨询记录</p></nav>
+      <details class="sidebar-news" id="news-card">
+        <summary>政策动态 <span id="news-count">0</span></summary>
+        <div class="news-body">
+          <p class="news-disclaimer">动态仅作政策发现线索，不替代正式依据。摘要与分类为系统归纳。</p>
+          <div class="news-filters">
+            <label>类别<select id="news-category"><option value="all">全部类别</option><option value="announcement">政策发布</option><option value="amendment">修订与废止</option><option value="upcoming">即将施行</option><option value="interpretation">政策解读</option><option value="news">新闻资讯</option></select></label>
+            <label>时间<select id="news-period"><option value="all">全部时间</option><option value="week">本周</option><option value="month">本月</option></select></label>
+            <label>领域<select id="news-domain"><option value="all">全部领域</option><option value="forex">外汇</option><option value="tax">税收</option><option value="commerce">商务</option><option value="development">发展改革</option></select></label>
+            <label>地区<select id="news-region"><option value="all">全部地区</option><option value="CN">全国</option></select></label>
+          </div>
+          <button type="button" id="news-refresh" class="news-refresh">刷新动态</button>
+          <p id="news-status" class="news-status" role="status">咨询后自动检索，也可手动刷新。</p>
+          <div id="news-items" class="news-items"></div>
+        </div>
+      </details>
+      <div class="sidebar-actions">
+        <button type="button" id="analyze-existing" disabled>按现有信息分析</button>
+        <p>停止本轮追问，按已提供的信息分析；之后仍可继续补充。</p>
+      </div>
       <div class="sidebar-bottom">咨询记录保存在本机</div>
     </aside>
     <div class="scrim" id="scrim"></div>
@@ -45,7 +64,7 @@
           <h2 class="section-label">选择业务类别与咨询事项</h2>
           <div class="business-tabs" id="business-tabs" role="group" aria-label="业务类别"></div>
           <div class="suggestions" id="suggestions" aria-label="税收业务事项"></div>
-          <p class="welcome-note">提问时请说明适用地区、所属期和具体情形；可附相关材料。</p>
+          <p class="welcome-note">可先描述案例及目前的疑点，系统将协助逐步梳理情景；也可附相关材料。</p>
         </div>
         <div class="messages" id="messages" aria-live="polite" aria-label="咨询内容"></div>
         <div class="composer-area">
@@ -57,11 +76,25 @@
             <div class="answer-mode-row">
               <label for="answer-mode">答复方式</label>
               <select id="answer-mode" aria-describedby="answer-mode-hint">
-                <option value="rough">快速答复</option>
-                <option value="precise">深入研判</option>
+                <option value="rough">即时答复</option>
+                <option value="interactive" selected>互动研判</option>
+                <option value="precise">审慎研判</option>
               </select>
-              <span id="answer-mode-hint">优先形成参考答复，资料来源未经核验</span>
+              <span id="answer-mode-hint">逐步补充事实与疑点，不逐条核验政策依据</span>
             </div>
+            <details class="tendency-control">
+              <summary>初步处理倾向 <span>选填，不预设结论</span></summary>
+              <label for="tendency">目前倾向</label>
+              <select id="tendency">
+                <option value="">尚未填写（可选）</option>
+                <option value="oppose">倾向不予支持，希望明确依据</option>
+                <option value="support">倾向予以支持，希望明确依据</option>
+                <option value="undecided">尚无明确倾向，希望综合研判</option>
+                <option value="custom">自行说明处理方向</option>
+              </select>
+              <label class="sr-only" for="tendency-note">处理倾向补充说明</label>
+              <input id="tendency-note" type="text" maxlength="500" placeholder="可补充具体处理方向及理由" hidden>
+            </details>
             <div class="attachment-list" id="attachments"></div>
             <label class="sr-only" for="question">请输入您的业务问题</label>
             <textarea id="question" rows="4" placeholder="请输入咨询事项，并说明适用地区、业务所属期及相关事实…" maxlength="20000"></textarea>

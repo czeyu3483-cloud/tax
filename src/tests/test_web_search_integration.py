@@ -301,3 +301,20 @@ def test_entrypoint_launches_selected_frontend_without_local_service(monkeypatch
         "model_name": "test-model", "provider": "deepseek", "config_path": None,
         **({} if use_cli else {"host": "127.0.0.1", "port": 8000}),
     })]
+
+
+def test_web_entrypoint_enables_news_for_its_custom_agent_factory(monkeypatch):
+    import uvicorn
+    from src.agent.main_agent import run_3wagent
+    captured = {}
+    sentinel = object()
+    def create_app(**kwargs):
+        captured.update(kwargs)
+        return sentinel
+    monkeypatch.setattr('src.web.app.create_app', create_app)
+    monkeypatch.setattr(uvicorn, 'run', lambda app, **kwargs: captured.update(app=app, **kwargs))
+    run_3wagent(port=8123)
+    assert captured['app'] is sentinel
+    assert captured['enable_news'] is True
+    assert callable(captured['agent_factory'])
+    assert captured['host'] == '127.0.0.1' and captured['port'] == 8123

@@ -74,6 +74,7 @@ class ConversationStore:
         *,
         create: bool = False,
         public_messages: Iterable[dict] | None = None,
+        case_state: dict | None = None,
     ) -> dict:
         self._validate_id(conversation_id)
         plain_messages = _jsonable(list(messages))
@@ -92,6 +93,9 @@ class ConversationStore:
             }
             if display is not None:
                 record["public_messages"] = display
+            saved_case = case_state if case_state is not None else (existing or {}).get("case_state")
+            if saved_case is not None:
+                record["case_state"] = _jsonable(saved_case)
             self.root.mkdir(parents=True, exist_ok=True)
             target = self.root / f"{conversation_id}.json"
             temporary = target.with_suffix(f".{uuid.uuid4().hex}.tmp")

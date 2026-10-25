@@ -1,14 +1,21 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
-const state = {id: null, messages: [], attachments: [], busy: false};
+const state = {id: null, messages: [], attachments: [], busy: false, caseState: null, answerDrafts: {}, tendencyDirty: false, epoch: 0, creating: null};
 const modePicker = $('answer-mode');
-try {modePicker.value = localStorage.getItem('xiaochi-answer-mode') === 'precise' ? 'precise' : 'rough';} catch (_) {}
+const modeNames = {rough:'即时答复', interactive:'互动研判', precise:'审慎研判'};
+try {
+  const stored = localStorage.getItem('xiaochi-answer-mode');
+  modePicker.value = Object.hasOwn(modeNames, stored) ? stored : 'interactive';
+} catch (_) {modePicker.value = 'interactive';}
 function updateModeHint() {
-  $('answer-mode-hint').textContent = modePicker.value === 'rough'
-    ? '优先形成参考答复，资料来源未经核验' : '检索原文并核对依据，处理时间相对较长';
+  $('answer-mode-hint').textContent = {
+    rough:'直接按现有信息答复，不追问、不核验政策依据',
+    interactive:'逐步补充事实与疑点，不逐条核验政策依据',
+    precise:'逐步补充事实，并核查引用原文、适用条件与效力'
+  }[modePicker.value];
 }
 modePicker.addEventListener('change', () => {
-  updateModeHint();
+  updateModeHint(); renderMessages();
   try {localStorage.setItem('xiaochi-answer-mode', modePicker.value);} catch (_) {}
 });
 updateModeHint();
@@ -43,13 +50,19 @@ async function api(path, options = {}) {
   return data;
 }
 function showError(message = '') { $('error').textContent = message; $('error').hidden = !message; }
+function updateActionAvailability() {
+  $('analyze-existing').disabled = state.busy || !(
+    state.messages.some(item => item.role === 'user') || $('question').value.trim() || state.attachments.length);
+}
 function setBusy(value) {
   state.busy = value;
   $('brand-mascot').dataset.state = value ? 'busy' : 'idle';
   for (const button of document.querySelectorAll('button')) button.disabled = value;
+  for (const control of document.querySelectorAll('.clarification-panel input, #tendency, #tendency-note')) control.disabled = value || control.dataset.skipped === 'true';
   $('question').readOnly = value;
   modePicker.disabled = value;
   $('send-button').textContent = value ? '处理中' : '提交';
+  updateActionAvailability();
 }
 function scrollEnd() {
   const workspace = document.querySelector('.workspace');
@@ -60,7 +73,7 @@ function assistantLabel(item = {}) {
   const label = document.createElement('div'); label.className = 'assistant-label';
   const name = document.createElement('span'); name.textContent = agentName;
   const note = document.createElement('span'); note.className = 'answer-caption';
-  note.textContent = item.mode === 'rough' ? '快速答复 · 资料来源未经核验' : '深入研判 · 供工作参考';
+  note.textContent = (modeNames[item.mode] || '审慎研判') + ' · ' + (item.mode === 'precise' || !item.mode ? '供工作参考' : '政策依据未经逐条核验');
   if (Number.isFinite(item.elapsed_seconds)) note.textContent += ` · ${item.elapsed_seconds.toFixed(1)}秒`;
   label.append(name, note); return label;
 }
@@ -68,7 +81,7 @@ function renderMessages(waiting = false) {
   $('messages').replaceChildren();
   $('welcome').hidden = state.messages.length > 0 || waiting;
   let voiceTurn = -1;
-  for (const item of state.messages) {
+  for (const [messageIndex, item] of state.messages.entries()) {
     const message = document.createElement('article'); message.className = `message ${item.role}`;
     if (item.role === 'user') {
       voiceTurn++;
@@ -79,20 +92,16 @@ function renderMessages(waiting = false) {
       const answer = document.createElement('div'); answer.className = 'answer';
       // Only server-rendered Markdown (HTML disabled) is accepted here.
       if (item.html) answer.innerHTML = item.html; else answer.textContent = item.content;
-      for (const link of answer.querySelectorAll('a')) {link.target = '_blank'; link.rel = 'noopener noreferrer';}
+      for (const link of answer.querySelectorAll('a')) {const href = safeHref(link.getAttribute('href')); if (href) link.href = href; else link.removeAttribute('href'); link.target = '_blank'; link.rel = 'noopener noreferrer';}
       message.append(answer);
       const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'copy-button'; copy.textContent = '复制答复';
       copy.addEventListener('click', async () => {try {await navigator.clipboard.writeText(item.content); copy.textContent = '已复制';} catch (_) {showError('浏览器未允许复制，请选择答复文字手动复制。');}});
       message.append(copy, voiceButton(state.id, voiceTurn));
-      if (Array.isArray(item.related_questions) && item.related_questions.length === 3) {
-        const related = document.createElement('section'); related.className = 'related-questions'; related.setAttribute('aria-label', '相关问题');
-        const heading = document.createElement('h3'); heading.textContent = '相关问题';
-        const hint = document.createElement('span'); hint.textContent = '选择后填入咨询输入框'; heading.append(hint); related.append(heading);
-        for (const question of item.related_questions) {
-          const button = document.createElement('button'); button.type = 'button'; button.disabled = state.busy;
-          button.textContent = question; button.addEventListener('click', () => useQuestion(question)); related.append(button);
-        }
-        message.append(related);
+      if (Array.isArray(item.citations) && item.citations.length) message.append(renderCitations(item.citations));
+      const questions = Array.isArray(item.clarification_questions) ? item.clarification_questions.slice(0, 2) : [];
+      if (questions.length) {
+        const active = messageIndex === state.messages.length - 1 && !waiting && modePicker.value !== 'rough';
+        message.append(renderClarifications(questions, active));
       }
     }
     $('messages').append(message);
@@ -105,7 +114,7 @@ function renderMessages(waiting = false) {
     elapsed.textContent = '已用时 0 秒';
     text.append(phase, elapsed); article.append(text); $('messages').append(article);
   }
-  scrollEnd();
+  updateActionAvailability(); scrollEnd();
 }
 function watchProgress(conversationId, requestId) {
   let stopped = false, polling = false;
@@ -162,20 +171,28 @@ async function selectConversation(id) {
   setBusy(true); showError();
   try {
     const record = await api(`/api/conversations/${id}`);
-    state.id = record.id; state.messages = record.messages; state.attachments = [];
+    state.id = record.id; state.messages = record.messages; state.attachments = []; state.answerDrafts = {}; state.caseState = record.case_state || null; syncTendency();
     localStorage.setItem('xiaochi-conversation', state.id);
     $('question').value = '';
-    renderAttachments(); renderMessages(); closeMenu(); await refreshHistory();
+    renderAttachments(); renderMessages(); closeMenu(); startNewsPolling(); await refreshHistory();
   } catch (error) {showError(error.message);} finally {setBusy(false);}
 }
 async function ensureConversation() {
-  if (!state.id) {const record = await api('/api/conversations', {method:'POST'}); state.id = record.id; localStorage.setItem('xiaochi-conversation', state.id);}
-  return state.id;
+  if (state.id) return state.id;
+  if (state.creating) return state.creating;
+  const epoch = state.epoch;
+  const creating = api('/api/conversations', {method:'POST'}).then(record => {
+    if (state.epoch !== epoch) throw new Error('咨询已切换，请在当前咨询中重试。');
+    state.id = record.id;
+    try {localStorage.setItem('xiaochi-conversation', state.id);} catch (_) {}
+    return state.id;
+  }).finally(() => {if (state.creating === creating) state.creating = null;});
+  state.creating = creating; return creating;
 }
 function resetConversation() {
   hideHistoryNotice();
   stopVoice();
-  state.id = null; state.messages = []; state.attachments = []; localStorage.removeItem('xiaochi-conversation');
+  stopNewsPolling(); state.epoch++; state.creating = null; state.id = null; state.messages = []; state.attachments = []; state.answerDrafts = {}; state.caseState = null; syncTendency(); renderNews(null); localStorage.removeItem('xiaochi-conversation');
   $('question').value = ''; $('question').style.height = 'auto';
   showError(); renderAttachments(); renderMessages(); closeMenu();
 }
@@ -227,34 +244,51 @@ $('file-input').addEventListener('change', async () => {
   } catch (error) {showError(error.message);} finally {setBusy(false);}
 });
 $('question').addEventListener('keydown', event => {if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {event.preventDefault(); $('chat-form').requestSubmit();}});
-$('question').addEventListener('input', () => {$('question').style.height = 'auto'; $('question').style.height = `${Math.min($('question').scrollHeight, 240)}px`;});
-$('chat-form').addEventListener('submit', async event => {
-  event.preventDefault(); if (state.busy) return;
+$('question').addEventListener('input', () => {updateActionAvailability();$('question').style.height = 'auto'; $('question').style.height = `${Math.min($('question').scrollHeight, 240)}px`;});
+$('chat-form').addEventListener('submit', event => {event.preventDefault(); submitConsultation();});
+$('analyze-existing').addEventListener('click', () => submitConsultation('analyze_existing'));
+async function submitConsultation(action = 'respond') {
+  if (state.busy) return;
   stopVoice();
   const draft = $('question').value; const draftHeight = $('question').style.height;
-  const text = draft.trim(); if (!text && !state.attachments.length) { $('question').focus(); return; }
-  hideHistoryNotice();
-  let committed = false;
-  let stopProgress = () => {};
+  const text = draft.trim(); const answers = submittedAnswers();
+  const tendency = state.tendencyDirty && $('tendency').value ? $('tendency').value : undefined;
+  const tendencyNote = tendency ? $('tendency-note').value.trim() : undefined;
+  if (!text && !state.attachments.length && !answers.length && !tendency && action !== 'analyze_existing') {$('question').focus(); return;}
+  if (action === 'analyze_existing' && !text && !state.attachments.length && !state.messages.some(item => item.role === 'user')) {showError('请先提供需要分析的案例情况。'); return;}
+  hideHistoryNotice(); closeMenu();
+  let committed = false; let stopProgress = () => {};
   const previous = [...state.messages]; const files = [...state.attachments];
+  const selectedMode = modePicker.value;
+  const visible = [text];
+  const questions = latestQuestions();
+  for (const answer of answers) {
+    const question = questions.find(item => item.id === answer.question_id);
+    visible.push((question?.prompt || '补充信息') + '：' + (answer.skipped ? '暂不补充' : [answer.selected_option, answer.text].filter(Boolean).join('；')));
+  }
+  if (tendency) visible.push('初步处理倾向：' + {oppose:'倾向不予支持',support:'倾向予以支持',undecided:'尚未确定',custom:'其他考虑'}[tendency] + (tendencyNote ? '；' + tendencyNote : ''));
+  if (action === 'analyze_existing') visible.push('请按现有信息分析，本轮不再追问；未提供的事实保留为未知。');
   setBusy(true); showError();
   $('question').value = ''; $('question').style.height = 'auto';
-  state.messages.push({role:'user', content:text, attachments:files.map(item => item.name)}); renderMessages(true);
+  state.messages.push({role:'user', content:visible.filter(Boolean).join('\n'), attachments:files.map(item => item.name)}); renderMessages(true);
   try {
     await ensureConversation();
     const requestId = crypto.randomUUID();
     stopProgress = watchProgress(state.id, requestId);
-    const response = await api(`/api/conversations/${state.id}/messages`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:text, attachments:files.map(item => item.id), request_id:requestId, mode:modePicker.value})});
+    const pending = api('/api/conversations/' + state.id + '/messages', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:text, attachments:files.map(item => item.id), request_id:requestId, mode:selectedMode, answers, tendency, tendency_note:tendencyNote, action})});
+    startNewsPolling(true);
+    const response = await pending;
     committed = true;
-    state.messages.push({role:'assistant', content:response.answer, html:response.answer_html, related_questions:response.related_questions, mode:response.mode, elapsed_seconds:response.elapsed_seconds});
-    state.attachments = []; renderAttachments(); renderMessages();
+    state.caseState = response.case_state || state.caseState;
+    state.messages.push({role:'assistant', content:response.answer, html:response.answer_html, clarification_questions:response.clarification_questions, citations:response.citations, mode:response.mode, elapsed_seconds:response.elapsed_seconds});
+    state.answerDrafts = {}; state.attachments = []; syncTendency(); renderAttachments(); renderMessages(); startNewsPolling(true);
     await refreshHistory();
   } catch (error) {
     if (!committed) {state.messages = previous; $('question').value = draft; $('question').style.height = draftHeight;}
     renderMessages(); showError(error.message);
   }
   finally {stopProgress(); setBusy(false); $('question').focus();}
-});
+}
 function useQuestion(text) {
   if (state.busy) return;
   $('question').value = text;
@@ -299,6 +333,212 @@ async function initialize() {
     const remembered = localStorage.getItem('xiaochi-conversation'); if (remembered) await selectConversation(remembered);
   } catch (error) {showError('暂时无法连接服务，请确认服务已启动后刷新页面。');}
 }
+
+function safeHref(value) {
+  if (typeof value !== 'string' || !value || /[\u0000-\u0020\u007f\\]/.test(value)) return '';
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/\.$/, '');
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || (url.port && !['80','443'].includes(url.port))) return '';
+    if (!host.includes('.') || host.includes(':') || /^\d+(?:\.\d+){3}$/.test(host) || host === 'localhost' || /\.(localhost|local|internal|lan|home|test|invalid)$/.test(host)) return '';
+    return url.href;
+  } catch (_) {return '';}
+}
+function linkNode(title, url) {
+  const href = safeHref(url);
+  const node = document.createElement(href ? 'a' : 'span'); node.textContent = title || '未注明标题';
+  if (href) {node.href = href; node.target = '_blank'; node.rel = 'noopener noreferrer';}
+  return node;
+}
+function detailLine(parent, label, value) {
+  if (!value) return;
+  const line = document.createElement('p'); const title = document.createElement('strong'); title.textContent = label + '：';
+  line.append(title, document.createTextNode(String(value))); parent.append(line);
+}
+function renderCitations(citations) {
+  const box = document.createElement('details'); box.className = 'citation-panel';
+  const heading = document.createElement('summary'); heading.textContent = '政策引用与核验情况（' + citations.length + '）'; box.append(heading);
+  const labels = {pending:'效力待核验',effective:'现行有效',not_yet_effective:'尚未施行',repealed:'已废止',expired:'已失效',amended:'已修改或替代'};
+  for (const citation of citations) {
+    const item = document.createElement('section'); item.className = 'citation-item';
+    item.append(linkNode(citation.title || citation.document_number, citation.url));
+    const status = document.createElement('span'); status.className = 'citation-status'; status.textContent = labels[citation.validity] || '效力待核验'; item.append(status);
+    detailLine(item, '发布机关', citation.issuer); detailLine(item, '文号 / 条款', [citation.document_number, citation.article].filter(Boolean).join(' / '));
+    detailLine(item, '发布日期', citation.published_at || '未明确'); detailLine(item, '施行日期', citation.effective_at || '未明确');
+    detailLine(item, '原文取得情况', citation.source_status === 'original_read' ? '已取得原文，仍须核对具体适用条件' : '仅作检索线索，原文尚待核实');
+    detailLine(item, '效力说明', citation.validity_note); detailLine(item, '最近核验', citation.checked_at || '尚未核验');
+    if (citation.validity_evidence_url || citation.validity_evidence_excerpt) {
+      const evidence = document.createElement('div'); evidence.className = 'validity-evidence';
+      evidence.append(linkNode('效力核验依据', citation.validity_evidence_url));
+      detailLine(evidence, '相关摘录', citation.validity_evidence_excerpt); item.append(evidence);
+    }
+    box.append(item);
+  }
+  return box;
+}
+function latestQuestions() {
+  const last = state.messages[state.messages.length - 1];
+  return last?.role === 'assistant' && Array.isArray(last.clarification_questions) ? last.clarification_questions.slice(0, 2) : [];
+}
+function submittedAnswers() {
+  if (modePicker.value === 'rough') return [];
+  return latestQuestions().flatMap(question => {
+    const draft = state.answerDrafts[question.id];
+    if (!draft || !(draft.skipped || draft.selected_option || draft.text?.trim())) return [];
+    return [{question_id:question.id, selected_option:draft.skipped ? '' : draft.selected_option || '', text:draft.skipped ? '' : (draft.text || '').trim(), skipped:!!draft.skipped}];
+  });
+}
+function renderClarifications(questions, active) {
+  const panel = document.createElement('section'); panel.className = 'clarification-panel';
+  const heading = document.createElement('h3'); heading.textContent = active ? '补充案例情况' : '本轮提出的待确认事项'; panel.append(heading);
+  const note = document.createElement('p'); note.className = 'clarification-note';
+  note.textContent = active ? '可选择、自由补充或跳过；点击提交后才会记入咨询。也可直接按现有信息分析。' : '历史问题仅供回查；请在最新一轮继续补充。';
+  panel.append(note);
+  for (const question of questions) {
+    if (!active) {const text = document.createElement('p'); text.textContent = question.prompt; panel.append(text); continue;}
+    const draft = state.answerDrafts[question.id] ||= {selected_option:'',text:'',skipped:false};
+    const field = document.createElement('fieldset'); const legend = document.createElement('legend'); legend.textContent = question.prompt; field.append(legend);
+    const choices = document.createElement('div'); choices.className = 'clarification-options';
+    const optionButtons = [];
+    for (const option of question.options || []) {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'clarification-option'; button.textContent = option; button.disabled = state.busy;
+      button.setAttribute('aria-pressed', String(draft.selected_option === option && !draft.skipped)); optionButtons.push(button);
+      button.addEventListener('click', () => {
+        if (state.busy) return;
+        draft.selected_option = draft.selected_option === option ? '' : option; draft.skipped = false; sync();
+      }); choices.append(button);
+    }
+    const input = document.createElement('input'); input.type = 'text'; input.className = 'clarification-free-text'; input.placeholder = '也可直接输入补充说明'; input.maxLength = 2000;
+    input.setAttribute('aria-label', question.prompt + '：自由补充'); input.value = draft.text;
+    input.addEventListener('input', () => {draft.text = input.value; draft.skipped = false; sync();});
+    input.addEventListener('keydown', event => {if (event.key === 'Enter' && !event.isComposing) {event.preventDefault(); submitConsultation();}});
+    const skip = document.createElement('button'); skip.type = 'button'; skip.className = 'clarification-skip';
+    skip.addEventListener('click', () => {if (state.busy) return; draft.skipped = !draft.skipped; if (draft.skipped) {draft.selected_option = ''; draft.text = ''; input.value = '';} sync();});
+    function sync() {
+      optionButtons.forEach(button => button.setAttribute('aria-pressed', String(button.textContent === draft.selected_option && !draft.skipped)));
+      skip.textContent = draft.skipped ? '已选择跳过 · 撤销' : '暂不补充此项'; skip.setAttribute('aria-pressed', String(draft.skipped));
+      input.disabled = state.busy || draft.skipped; input.dataset.skipped = String(draft.skipped);
+    }
+    sync(); field.append(choices, input, skip); panel.append(field);
+  }
+  if (active) {
+    const submit = document.createElement('button'); submit.type = 'button'; submit.className = 'clarification-submit'; submit.textContent = '提交补充信息'; submit.disabled = state.busy;
+    submit.addEventListener('click', () => submitConsultation()); panel.append(submit);
+  }
+  return panel;
+}
+function syncTendency() {
+  const data = state.caseState;
+  $('tendency').value = data?.tendency_provided ? data.tendency : '';
+  $('tendency-note').value = data?.tendency_note || '';
+  $('tendency-note').hidden = !$('tendency').value;
+  state.tendencyDirty = false;
+}
+$('tendency').addEventListener('change', () => {state.tendencyDirty = true; $('tendency-note').hidden = !$('tendency').value;});
+$('tendency-note').addEventListener('input', () => {state.tendencyDirty = true;});
+let newsGeneration = 0, newsTimer = null, newsScopedId = null;
+function stopNewsPolling() {newsGeneration++; clearTimeout(newsTimer); newsTimer = null;}
+function policyDateRange(period, now = new Date()) {
+  if (period === 'all') return {};
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai', year:'numeric', month:'2-digit', day:'2-digit'}).format(now);
+  const start = new Date(today + 'T00:00:00Z');
+  if (period === 'week') start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
+  else start.setUTCDate(1);
+  return {date_from:start.toISOString().slice(0, 10), date_to:today};
+}
+function newsFilters() {
+  return {category:$('news-category').value, domain:$('news-domain').value, region:$('news-region').value,
+    ...policyDateRange($('news-period').value)};
+}
+
+function renderNews(data, error = '') {
+  const items = data?.items || []; const status = data?.status || {};
+  $('news-count').textContent = items.length; $('news-items').replaceChildren();
+  const pieces = [];
+  if (error) pieces.push(error);
+  if (status.running) pieces.push('正在检索动态，不影响当前咨询。');
+  if (status.error) pieces.push(typeof status.error === 'string' ? status.error : status.error.message || '本次更新未完成。');
+  if (status.last_attempt) pieces.push('最近尝试：' + formatNewsTime(status.last_attempt));
+  if (status.last_success) pieces.push('最近成功：' + formatNewsTime(status.last_success));
+  if (!pieces.length) pieces.push(state.id ? '尚未检索，可手动刷新政策动态。' : '咨询后自动检索，也可手动刷新。');
+  if (!items.length && status.last_success) pieces.push('当前筛选条件下暂无动态。日期筛选不含发布日期未明确的条目。');
+  $('news-status').textContent = pieces.join('\n');
+  const labels = {announcement:'政策发布',amendment:'修订与废止',upcoming:'即将施行（待核实）',interpretation:'政策解读',news:'新闻资讯',other:'其他'};
+  for (const entry of items.slice(0, 20)) {
+    const item = document.createElement('article'); item.className = 'news-item'; item.append(linkNode(entry.title, entry.url));
+    const meta = document.createElement('p'); meta.className = 'news-meta';
+    meta.textContent = (entry.published_at || '发布日期未明确') + ' · ' + (labels[entry.category] || '政策线索'); item.append(meta);
+    const summary = document.createElement('p'); summary.className = 'news-summary'; summary.textContent = '系统归纳：' + (entry.summary || '暂无摘要'); item.append(summary);
+    const note = document.createElement('small'); note.textContent = '来源及效力待核实；发布日期来自检索元数据。'; item.append(note);
+    if (entry.effective_at) {
+      const effective = document.createElement('p'); effective.className = 'news-meta';
+      effective.textContent = '施行日期线索：' + entry.effective_at + '（待核实）'; item.append(effective);
+      if (entry.effective_evidence_excerpt) {
+        const evidence = document.createElement('details'); evidence.className = 'news-date-evidence';
+        const heading = document.createElement('summary'); heading.textContent = '日期来源';
+        const text = document.createElement('p'); text.textContent = entry.effective_evidence_excerpt;
+        evidence.append(heading, text); item.append(evidence);
+      }
+    }
+    const source = safeHref(entry.url);
+    if (source) {
+      const review = document.createElement('button'); review.type = 'button'; review.className = 'news-review';
+      review.textContent = '核查与本案的关系'; review.disabled = state.busy;
+      review.title = '仅填入输入框，不自动提交；需要逐条核验时请选择审慎研判。';
+      review.addEventListener('click', () => {
+        useQuestion('请结合当前案例，核查以下政策动态是否影响已有意见，并说明相关正式文件、适用条件与效力方面尚待核实的事项。\n'
+          + (entry.title || '政策动态') + '\n' + source); closeMenu();
+      });
+      item.append(review);
+    }
+    $('news-items').append(item);
+  }
+}
+function formatNewsTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '时间未明确' : date.toLocaleString('zh-CN', {timeZone:'Asia/Shanghai', hour12:false});
+}
+function startNewsPolling(waitForStart = false) {
+  stopNewsPolling();
+  const id = state.id, generation = newsGeneration;
+  if (!id) {newsScopedId = null; renderNews(null); return;}
+  if (newsScopedId !== id) {newsScopedId = id; renderNews(null);}
+  let attempts = 0;
+  const poll = async () => {
+    if (generation !== newsGeneration || state.id !== id) return;
+    try {
+      const params = new URLSearchParams(newsFilters());
+      const data = await api('/api/conversations/' + id + '/policy-news?' + params);
+      if (generation !== newsGeneration || state.id !== id) return;
+      renderNews(data); attempts++;
+      if (data.status?.running || (waitForStart && attempts < 3)) newsTimer = setTimeout(poll, 1500);
+      else if ($('news-card').open) newsTimer = setTimeout(poll, 60000);
+    } catch (error) {
+      if (generation === newsGeneration && state.id === id) renderNews(null, error.message);
+    }
+  };
+  poll();
+}
+$('news-card').addEventListener('toggle', () => {if ($('news-card').open) startNewsPolling();});
+for (const id of ['news-category','news-period','news-domain','news-region']) $(id).addEventListener('change', () => startNewsPolling());
+for (const region of ['北京','天津','河北','山西','内蒙古','辽宁','吉林','黑龙江','上海','江苏','浙江','安徽','福建','江西','山东','河南','湖北','湖南','广东','广西','海南','重庆','四川','贵州','云南','西藏','陕西','甘肃','青海','宁夏','新疆','香港','澳门','台湾']) {
+  const option = document.createElement('option'); option.value = region; option.textContent = region; $('news-region').append(option);
+}
+$('news-refresh').addEventListener('click', async () => {
+  if (state.busy) return;
+  const button = $('news-refresh'); button.disabled = true;
+  let id, generation; const epoch = state.epoch;
+  try {
+    id = await ensureConversation(); if (epoch !== state.epoch) return; stopNewsPolling(); generation = newsGeneration;
+    const latest = [...state.messages].reverse().find(item => item.role === 'user')?.content || '';
+    const filters = newsFilters();
+    await api('/api/conversations/' + id + '/policy-news/refresh', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question:latest, category:filters.category, domain:filters.domain, region:filters.region})});
+    if (state.id === id && generation === newsGeneration) startNewsPolling(true);
+  } catch (error) {
+    if (epoch === state.epoch && (!id || (state.id === id && generation === newsGeneration))) renderNews(null, error.message);
+  } finally {button.disabled = state.busy;}
+});
+
 // Pause decorative sprite work when this page is in the background.
 function syncMascotVisibility() {
   $('brand-mascot').dataset.paused = String(document.hidden);

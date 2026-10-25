@@ -30,7 +30,7 @@ src/.venv/bin/python -m src.main --llm-config path/to/my-llm.yaml --provider my-
 
 `config/xiaochi.yaml` 管理产品名称、默认法域、服务场景、话术、快捷问题与免责声明。主提示词要求中文、礼貌简洁、结论在前，必要时列适用条件和官方依据，只询问影响答复的关键事实。正式报告与答复草稿使用 `config/output-contract.yaml` 和 `templates/report.md`，草稿须经工作人员审核。
 
-普通咨询默认约 300 字。对于缺少主体、地区或资金条件的操作问题，先确认最多三项关键事实，再进行对应检索，不延伸用户未问的议题；明确要求政策原文、官方出处或详细分析时仍按需检索。
+普通咨询优先简明答复，不为限字省略关键条件。即时答复不追问；互动研判与审慎研判每轮最多两个独立关键问题，提供选项与自由输入，聚焦工作人员的疑点。切换模式复用已提交资料；点击“按现有信息分析”后以条件分支保留缺口。仅审慎研判开展政策原文与效力线索核验，具体协议与边界见[案例研判流程](docs/case-workflow.md)。
 
 Web 与 CLI 都完整消费 Agent 运行，再从最后一个主 Agent 消息提取最终答复。工具调用结束、专家输出或仅思考的尾消息不能充当最终答复。每条最终答复由 `agent/public_answer.py` 统一追加 AI 生成提示。Web 不发送中间帧或内部推理事件；等待时按实际执行显示“小弛正在研判业务问题／检索政策资料／核验资料来源／整理答复……”及等待秒数。
 
@@ -92,9 +92,9 @@ HTTP 错误或缺少密钥都返回明确错误；不会自动切换到 DuckDuck
 `site:` 查询重试，结果仍通过 DeepSeek 获取。标题与注册表元数据仅用于发现候选 URL；引用摘录可用于支持其覆盖范围内的结论。
 `WebSearchTool` 自动读取相关官方 HTML 正文，返回 `source_text`、`source_url`、`source_title`、`source_read_at`、`source_sha256`、`source_truncated` 与 `source_status`；失败返回 `source_error`。`official_text_results` 和 `official_excerpt_results` 分别统计正文及引用摘录，两者都没有时标记 `leads_only`。
 
-`websearch/sources.py` 每批并行读取至多三个官方候选，均失败时继续尝试后续候选；成功正文缓存 15 分钟、最多 128 条。每页 12 秒 HTTP 超时、2 MiB 下载上限，返回至多 16000 字符并标记截断。仅请求配置中的官方域名，跳转重新校验，拒绝内网地址和凭据 URL；网页请求不携带 DeepSeek 密钥。成功读取不代表政策仍然有效，Agent 仍须判断用户时点、适用对象和版本关系。
+审慎研判中的 `websearch/sources.py` 每批并行读取至多三个官方候选，均失败时继续尝试后续候选；成功正文缓存 15 分钟、最多 128 条。每页 12 秒 HTTP 超时、2 MiB 下载上限，返回至多 16000 字符并标记截断。仅请求配置中的官方域名，跳转重新校验，拒绝内网地址和凭据 URL；网页请求不携带 DeepSeek 密钥。成功读取不代表政策仍然有效，Agent 仍须判断用户时点、适用对象和版本关系。
 
-保留主 Agent 自主选择工具、专家和研究停止时点。已撤销三次共享网络预算和 URL-only 强制结束，保留原有每 Agent 15 次搜索保护及重复查询检查。官方域名配置位于 `config/jurisdictions.yaml`，搜索提供方统一为 `deepseek-official`。
+审慎研判保留主 Agent 自主选择工具、专家和研究停止时点；前两种模式使用一次轻量搜索和三个工具调用的独立预算。已撤销三次共享网络预算和 URL-only 强制结束，保留原有每 Agent 15 次搜索保护及重复查询检查。官方域名配置位于 `config/jurisdictions.yaml`，搜索提供方统一为 `deepseek-official`。
 
 DeepSeek HTTP 客户端遵循标准 HTTP(S) 代理环境变量。旧 OpenWebSearch daemon、
 SearXNG 工具、SAFE 站内搜索及 WebFetchTool 已删除，不再读取旧 daemon／抓取配置。
@@ -113,7 +113,7 @@ SearXNG 工具、SAFE 站内搜索及 WebFetchTool 已删除，不再读取旧 d
 | CLI | `agent/cli.py`；保留内部多轮上下文，公开最终答复 |
 | 检索 | `websearch/` 与 `tools/web_search.py` |
 
-只读接口包括 `GET /api/config`、`GET /api/conversations`、`GET /api/conversations/{id}` 及本轮 UUID 的进度接口。写接口为新建、上传、消息、`DELETE /api/conversations/{id}` 与 `POST /api/conversations/{id}/restore`。删除和恢复仅返回 ID 与状态，不返回内部上下文。删除采用 `.trash/` 可恢复记录，附件和运行日志保留；同一运行锁保护消息与历史管理，正在处理问题时返回 409。消息接口完整结束后一次返回 `answer`、`answer_html` 与三个 `related_questions`，不支持过程流。
+只读接口包括 `GET /api/config`、`GET /api/conversations`、`GET /api/conversations/{id}` 及本轮 UUID 的进度接口。写接口为新建、上传、消息、`DELETE /api/conversations/{id}` 与 `POST /api/conversations/{id}/restore`。删除和恢复仅返回 ID 与状态，不返回内部上下文。删除采用 `.trash/` 可恢复记录，附件和运行日志保留；同一运行锁保护消息与历史管理，正在处理问题时返回 409。消息接口完整结束后一次返回 `answer`、`answer_html`、`clarification_questions`、`citations`、`case_state`、`mode` 与 `elapsed_seconds`，不支持过程流；旧字段 `related_questions` 保留为空数组。消息参数及政策动态的读取/刷新接口见[案例研判流程](docs/case-workflow.md)。
 
 ## 验证
 
@@ -124,7 +124,9 @@ uv sync --project src --python 3.12 --locked --extra dev
 src/.venv/bin/python -m pytest -q src/tests
 ```
 
-自动化测试包括多轮会话、历史投影、删除/撤销与运行互斥、附件隔离、最终答复提示、Markdown、进度与官方正文读取。2026-10-12 的 220 项离线回归通过；此前八个真实场景通过，包含一项基于官方正文的政策回归；广泛税务政策质量及 42 题评测尚未完成。完整状态见能力路线图。
+2026-10-25 最终离线回归为 315 项通过（12.81 秒），2 项既有依赖弃用警告。前端交互测试、`node --check`、改动 Python 的定向 Ruff 检查（`--ignore B008`）及 `git diff --check` 均通过；EXE `--self-test` 启动新版后端、成功退出并回收子进程。四次真实调用验证 0/2/0/0 个澄清问题及审慎模式的两条引用；模拟接口浏览器 1280×720 检查选项、自由输入、倾向、分析按钮、恢复、动态与折叠引用，确认政策库无前端入口。详细耗时和核验局限见[案例研判流程](docs/case-workflow.md#验证)。
+
+既有自动化测试包括多轮会话、历史投影、删除/撤销与运行互斥、附件隔离、最终答复提示、Markdown、进度与官方正文读取。2026-10-12 的 220 项离线回归通过；此前八个真实场景通过，包含一项基于官方正文的政策回归；广泛税务政策质量及 42 题评测尚未完成。完整状态见能力路线图。
 
 可复现真实模型迭代：
 
@@ -136,8 +138,23 @@ src/.venv/bin/python -m src.evals.xiaochi_smoke
 
 原生搜索可能只有结构化链接，没有 `citations[].cited_text`。程序不把生成摘要或不透明 `encrypted_content` 当政策原文；官方 HTML 阅读补齐正文链路。外籍个人分红用例取得官方正文，完整回答 55.24 秒、四次搜索工具调用；此前简短缺口答复不能作为成功提速基准。远程 PDF、动态页面及长文定向回读尚未实现。
 
-### 相关问题推荐
+### 两问澄清、引用与案例状态
 
-Web 创建主 Agent 时启用 `suggest_followups`，本轮最终输出末尾生成三项 JSON 推荐元数据，无独立模型请求或额外检索。`agent/followups.py` 校验数量、类型、长度和去重；`agent/public_answer.py` 将元数据与正文分开，格式异常或截断时保留正常正文，并按问题类型提供三项兜底。`web/service.py` 将推荐保存在公开历史，旧历史在读取时补足推荐。CLI 默认不要求生成推荐。
+新交互取代旧式每轮三项推荐。`agent/case_workflow.py` 解析并校验澄清与引用元数据，最多保留两个独立问题，每题提供自由输入及“暂不清楚”；问题 ID 由后端按案例版本生成。`web/service.py` 只接收当前待答问题的提交，保存回答、跳过、材料、倾向及分析版本。旧问题不再编辑，模式切换复用公开案例记录；未提交选项不会进入事实记录。
 
-前端“相关问题”按钮把文字填入输入框，由用户修改、确认后发送；复制答复只包含正文和 AI 提示。2026-10-08 真实算术与虚拟材料两项验证通过，记录于本地忽略目录 `workspace/eval/office-followups-2026-10-08.json`。
+引用卡片分别显示原文是否取得、模型建议效力和可信历史核验记录。无可信记录时保留“效力待核验”；关键词命中、取得官方正文、模型建议以及动态摘要均不能自动升级为“现行有效”。引用 URL 必须来自实际工具结果、用户已提交的 URL 或可信政策库记录；用户提供链接仍只是待核实线索。正文显式引用政策但没有取得对应来源时显示“来源未取得，待核实”。过滤只针对来源链接，不泛删代码块、引文或用户要求的答复草稿。 现有存储并非完整的结论级证据账本，也不保证已经核实全部政策。
+
+### 政策存储与动态
+
+`policy/store.py` 通过 `web/app.py` 初始化，默认创建 `src/workspace/policy_data/policy.sqlite3`，使用内置 SQLite，无须额外数据库服务。初始化不导入政策，页面无知识库管理入口，也不提供导入 API。条款 FTS、文号检索、范围过滤、版本关联与效力证据接口已具备；向量接口需要另行配置 embedding 服务，默认不启用语义检索。
+
+`policy/news.py` 和 `policy/news_routes.py` 管理独立内存动态缓存。提问触发异步主题查询；刷新按钮可重新查询。每六小时只刷新已登记查询，进程停止后不再执行，重启不恢复动态缓存；这不是操作系统后台定时任务。动态不写入政策库，不将案例原文、账号等业务信息交给资讯搜索；只使用粗粒度业务关键词。用户可选择将动态来源带入当前案例再次研判。
+
+运行命令和完整测试命令见上文。本次新增的针对性回归可从仓库根目录执行：
+
+```bash
+src/.venv/bin/python -m pytest -q src/tests/test_answer_modes.py src/tests/test_case_workflow.py src/tests/test_policy_store.py src/tests/test_policy_news.py
+node --test src/tests/test_case_frontend.cjs
+```
+
+Windows 将 Python 路径替换为 `.\src\.venv\Scripts\python.exe`。Node 仅用于前端自动化测试，日常使用仍不需要 Node 或前端构建。测试中的政策数据是临时夹具，不会导入运行库；最新验证结果以[能力路线图](docs/agent-capability-roadmap.md)为准。

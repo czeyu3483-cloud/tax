@@ -45,9 +45,10 @@ def test_modes_persist_and_rough_omits_internal_history(tmp_path, monkeypatch):
     assert current_mode() == 'precise'
 
 
-def test_mode_restored_after_failure():
-    with pytest.raises(RuntimeError), answer_mode('rough'):
-        assert current_mode() == 'rough'
+@pytest.mark.parametrize('mode', ['rough', 'interactive'])
+def test_mode_restored_after_failure(mode):
+    with pytest.raises(RuntimeError), answer_mode(mode):
+        assert current_mode() == mode
         raise RuntimeError()
     assert current_mode() == 'precise'
 
@@ -59,18 +60,20 @@ def test_no_voice_key_skips_narration_preparation(monkeypatch):
     prepared.prewarm_latest([{'role': 'user', 'content': 'hello'}])
 
 
-def test_rough_search_never_reviews_fetches_or_retries(monkeypatch):
+@pytest.mark.parametrize('mode', ['rough', 'interactive'])
+def test_lightweight_search_never_reviews_fetches_or_retries(monkeypatch, mode):
     import src.tools.web_search as module
     run = ['first']
     monkeypatch.setattr(module, 'get_run_id', lambda: run[0])
     monkeypatch.setattr(module, 'register_discovered_urls', lambda *a, **k: None)
     def forbidden(*args, **kwargs):
-        pytest.fail('Source review or full-page retrieval ran in rough mode')
+        pytest.fail('Source review or full-page retrieval ran in a lightweight mode')
     monkeypatch.setattr(module, 'load_jurisdiction_search_policy', forbidden)
-    with answer_mode('rough'):
+    monkeypatch.setattr(module, 'OfficialSourceReader', forbidden)
+    with answer_mode(mode):
         tool = module.WebSearchTool()
     monkeypatch.setattr(tool, '_judge_results', forbidden)
-    monkeypatch.setattr(tool.source_reader, 'enrich', forbidden)
+    assert tool.source_reader is None
     requests = []
     def search(query, **kwargs):
         requests.append(query)
@@ -79,6 +82,7 @@ def test_rough_search_never_reviews_fetches_or_retries(monkeypatch):
     monkeypatch.setattr(tool.client, 'search', search)
     data = json.loads(tool.call({'query':'tax'}))
     assert data['quality'] == 'unverified'
+    assert data['validity_review'] == 'skipped'
     assert len(data['results']) == 1
     assert tool.settings.max_uses == 1 and tool.settings.timeout_seconds <= 20
     assert json.loads(tool.call({'query':'another'}))['error']['code'] == 'search_budget_exhausted'
@@ -88,7 +92,8 @@ def test_rough_search_never_reviews_fetches_or_retries(monkeypatch):
     assert len(requests) == 2
 
 
-def test_rough_agent_has_no_specialist_and_does_not_mutate_config(monkeypatch):
+@pytest.mark.parametrize(('mode', 'label'), [('rough', '即时答复'), ('interactive', '互动研判')])
+def test_lightweight_agent_has_no_specialist_and_does_not_mutate_config(monkeypatch, mode, label):
     from qwen_agent.agents import FnCallAgent
     from src.agent.main_agent import MainAgent
     config = {'model_server':'https://api.deepseek.com', 'generate_cfg':{}}
@@ -96,21 +101,27 @@ def test_rough_agent_has_no_specialist_and_does_not_mutate_config(monkeypatch):
     def init(self, **kwargs):
         captured.update(kwargs)
     monkeypatch.setattr(FnCallAgent, '__init__', init)
-    with answer_mode('rough'):
+    monkeypatch.setattr('src.agent.main_agent.case_context_prompt', lambda: 'CASE_CONTEXT_MARKER')
+    with answer_mode(mode):
         agent = MainAgent(llm=config, suggest_followups=True)
     assert agent.specialists == {}
     assert captured['function_list'] == ['AttachmentReadTool', 'WebSearchTool', 'WriteResult']
     assert captured['llm']['generate_cfg']['reasoning_effort'] == 'low'
     assert config['generate_cfg'] == {}
-    assert '快速答复' in captured['system_message']
+    assert label in captured['system_message']
+    assert '<case_interaction>' in captured['system_message']
+    assert 'CASE_CONTEXT_MARKER' in captured['system_message']
+    assert '<related_questions>' not in captured['system_message']
+    assert captured['llm']['generate_cfg']['request_timeout'] == 45
 
 
-def test_rough_tool_budget_forces_finalization():
+@pytest.mark.parametrize('mode', ['rough', 'interactive'])
+def test_lightweight_tool_budget_forces_finalization(mode):
     from src.agent.main_agent import MainAgent
     from src.agent.tool_loop_guard import TerminalToolResult
     agent = object.__new__(MainAgent)
-    agent.answer_mode = 'rough'
-    agent._rough_tool_calls = 3
+    agent.answer_mode = mode
+    agent._lightweight_tool_calls = 3
     with pytest.raises(TerminalToolResult):
         agent._call_tool('AttachmentReadTool', '{}')
 
@@ -159,3 +170,30 @@ def test_xls_upload_and_rough_followup_retain_material(tmp_path, monkeypatch):
         assert client.post(url, json={'message':'继续解释这个金额', 'mode':'rough'}).status_code == 200
         assert '测试金额' in str(captured[-1]) and '1130' in str(captured[-1])
         assert '<uploaded_document' in str(captured[-1])
+
+
+def test_precise_agent_receives_same_turn_metadata_and_case_context(monkeypatch):
+    from qwen_agent.agents import FnCallAgent
+    from src.agent.main_agent import MainAgent
+    captured = {}
+    def init(self, **kwargs):
+        captured.update(kwargs)
+    monkeypatch.setattr(FnCallAgent, '__init__', init)
+    monkeypatch.setattr('src.agent.main_agent.case_context_prompt', lambda: 'ANALYZE_EXISTING_CONTEXT')
+    with answer_mode('precise'):
+        agent = MainAgent(llm=None, suggest_followups=True)
+    assert agent.specialists
+    assert '审慎研判' in captured['system_message']
+    assert 'ANALYZE_EXISTING_CONTEXT' in captured['system_message']
+    assert '<case_interaction>' in captured['system_message']
+    assert '<related_questions>' not in captured['system_message']
+
+
+def test_cli_prompt_does_not_emit_web_metadata(monkeypatch):
+    from qwen_agent.agents import FnCallAgent
+    from src.agent.main_agent import MainAgent
+    captured = {}
+    monkeypatch.setattr(FnCallAgent, '__init__', lambda self, **kwargs: captured.update(kwargs))
+    with answer_mode('interactive'):
+        MainAgent(llm=None)
+    assert '<case_interaction>' not in captured['system_message']

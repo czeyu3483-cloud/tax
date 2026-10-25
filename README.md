@@ -6,19 +6,31 @@ Xiaochi is a public-sector work assistant built on the 3wagent core. It supports
 
 ## Features
 
-### Answer modes
+### Analysis modes and case workflow
 
-The Web composer defaults to **Quick Response (快速答复)** and remembers the selection. **In-depth Analysis (深入研判)** retains the existing source-review workflow. Each answer persists its mode and elapsed time.
+The Web UI initially selects **Interactive Analysis (互动研判)** and remembers the choice. Each answer retains its mode, elapsed time and case revision. Submitted answers, materials and initial handling preferences remain available when switching modes.
 
-Quick Response skips source review, relevance-model judging, official-page fetching and specialist delegation. It allows at most one lightweight search and three tool calls, uses a concise prompt, and excludes old internal tool traces from inference while retaining stored history and user attachments. Results are explicitly unverified. It prepares narration only on playback. In-depth Analysis checks relevant original evidence and treats earlier Quick Response conclusions as unverified. Neither mode prewarms narration without a Fish key.
+- **Immediate Response (即时答复, `rough`)** answers from the available information without follow-up questions or source review. It allows at most one lightweight search and three tool calls, skips official-page fetching and specialist delegation, and states missing conditions instead of inventing facts.
+- **Interactive Analysis (互动研判, `interactive`)** asks at most two consequential questions per turn, each with options, free text and an unknown/skip path. It clarifies the case and the worker's uncertainty without individually reviewing policy originals or validity.
+- **Careful Analysis (审慎研判, `precise`)** combines necessary clarification with official-source research, original-text reading and examination of version, validity evidence, conditions and exceptions. Unresolved issues remain explicitly unverified.
 
-Message API requests accept `mode: "rough" | "precise"`; omission preserves the in-depth workflow for existing clients. CLI behavior is unchanged. Legacy `.xls` uploads now work with the `legacy-excel` extra. No OCR, multi-user authorization, or concurrent-agent support has been added.
+An optional initial handling preference focuses the analysis but cannot establish facts or justify a preferred conclusion. **Analyze available information (按现有信息分析)** ends the current clarification round; further submissions can revise the analysis. This does not certify completeness. Careful Analysis still performs its policy research after the button is used.
+
+Expandable citation details separate proposed model judgments from reviewed policy-library records. Missing records remain pending verification; retrieving an official page alone does not establish legal validity or applicability. Citation URLs must come from actual tool results, submitted user URLs or trusted library records; user links remain unverified leads. Explicit policy references without an acquired source display a pending-source notice. Filtering does not broadly remove code, quotations or requested drafts. Immediate Response and Interactive Analysis prepare narration only on playback; no mode prewarms narration without a Fish key.
+
+Message requests accept `mode: "rough" | "interactive" | "precise"`; omission still selects `precise` for existing API clients. CLI behavior remains Careful Analysis. See the [case workflow and API guide](src/docs/case-workflow.md) for `answers`, `tendency` and `action` examples. Legacy `.xls` uploads require the `legacy-excel` extra. OCR, multi-user authorization and concurrent-agent support have not been added.
+
+### Policy updates and empty policy database
+
+The policy-updates sidebar asynchronously searches coarse business-topic keywords when a question is submitted. It supports manual refresh, date/category/domain/region filters and six-hour refreshes of previously queried topics while the server process is running. Updates are held in a separate in-memory cache. Search snippets and news are leads, not verified policy grounds; generated summaries are labeled accordingly. The user may bring an update into the conversation to reassess its effect on the current case.
+
+Startup creates an **empty** SQLite database at `src/workspace/policy_data/policy.sqlite3`. No real or sample policies are imported, and there is no knowledge-library frontend or ingestion API. The backend provides clause-level full-text indexing, document-number matching, scope filters, version relations and validity-evidence storage. Semantic retrieval requires an explicitly configured embedding provider and is not enabled by default. News searches do not populate this database.
 
 - Home shortcuts cover tax, foreign-exchange, and commerce/development matters, with four editable question starters per category. The larger composer removes repeated labels and the standalone footer; completed answers retain the reference notice.
 - Blue-and-red workspace with a navy history sidebar, a central chat panel, and official resources on wide screens. Subtle entry, hover and waiting animations respect reduced-motion preferences; uploads, policy links and answer copying remain available.
-- Three contextual follow-up questions after each answer. Clicking fills the editable composer; restored history retains the same questions.
+- At most two clarification questions in Interactive/Careful Analysis, with options and free text. Only submitted selections enter the shared case record; failed submissions restore the draft.
 - PDF, DOCX, spreadsheet, CSV and text parsing, with up to five attachments per question and 25 MB per file.
-- Direct conclusions with relevant conditions and policy evidence. Initial clarification asks for at most three key facts. Reports and reply drafts are generated when requested.
+- Case analysis distinguishes user statements, materials, disputed points and unknowns. Missing conditions lead to mode-appropriate clarification or conditional branches. Reports and reply drafts are generated when requested.
 - Final answers only in Web and CLI. Reasoning, tool calls, tool responses and specialist messages stay on the backend; history restoration uses a separate public transcript.
 - While waiting, the Web interface shows actual execution stages and elapsed seconds, without exposing reasoning or tool arguments. The Chinese agent name is 小弛.
 
@@ -38,7 +50,7 @@ The main steps below use macOS / Linux and run from the repository root. Python 
 | Answer narration | DeepSeek key and Fish key | Web |
 | Microphone input | Matching external SenseVoice project, environment and models | Web + ASR |
 
-Cloud chat does not require a local LLM, Node.js, frontend compilation, Docker, a database, or the former search daemon. Narration and microphone input are separate optional features.
+Cloud chat does not require a local LLM, Node.js, frontend compilation, Docker, an external database service, or the former search daemon; the empty policy store uses Python’s bundled SQLite. Narration and microphone input are separate optional features.
 
 Install Git and [uv](https://docs.astral.sh/uv/getting-started/installation/). On macOS with Homebrew:
 
@@ -285,13 +297,13 @@ Ordinary consultation targets about 300 Chinese characters. Operation questions 
 
 Search uses DeepSeek Harness's `web-search-deepseek` Messages protocol with native `web_search_20250305`. Only structured sources and URL-associated citation excerpts are accepted. Generated summaries are not scraped for links, and search never falls back to DuckDuckGo, Bing or SearXNG.
 
-`WebSearchTool` reads relevant official HTML articles after discovery and returns source text, final URL, read time, content hash and truncation status. It reads up to three pages concurrently, tries other official candidates after failures, and caches successful reads in memory for 15 minutes. Titles, URLs and generated summaries alone do not establish policy provisions.
+In Careful Analysis, `WebSearchTool` reads relevant official HTML articles after discovery and returns source text, final URL, read time, content hash and truncation status. It reads up to three pages concurrently, tries other official candidates after failures, and caches successful reads in memory for 15 minutes. Titles, URLs and generated summaries alone do not establish policy provisions.
 
-The main Agent retains autonomous tool selection and optional specialist delegation. The three-request shared limit and forced finalization on URL-only results have been removed. It stops once evidence suffices for the scoped question; progress messages report actual execution stages. Existing per-agent search protection and duplicate-query checks remain.
+Careful Analysis retains autonomous tool selection and optional specialist delegation; the other modes use the bounded lightweight policy. The three-request shared limit and forced finalization on URL-only results have been removed. It stops once evidence suffices for the scoped question; progress messages report actual execution stages. Existing per-agent search protection and duplicate-query checks remain.
 
 **Live check on 2026-10-07:** The dividend-policy question retrieved official text and correctly identified Announcement 2026 No. 27, its September 1 execution date, the covered individuals and enterprises, the 20% rate and repeal of the previous provision. This verifies one case, not general tax-policy accuracy.
 
-Remote PDFs, JavaScript-dependent pages and a local policy-text index remain unsupported. Uploaded PDFs support page-level reading. Unreadable sources and matters unspecified by the text are reported as specific evidence gaps.
+Remote PDFs and JavaScript-dependent pages remain unsupported. A local clause-index backend is now present, but its database is deliberately empty and no ingestion workflow is exposed. Uploaded PDFs support page-level reading. Unreadable sources and matters unspecified by the text are reported as specific evidence gaps.
 
 ## Testing and iteration
 
@@ -312,11 +324,13 @@ This command consumes API usage and uses isolated temporary conversations. It wr
 
 | Validation | Latest evidence |
 |---|---|
-| Offline regression | 220 tests passed on 2026-10-12 |
-| Live model checks | 8/8 passed: identity, supplied-input calculation, follow-up rewriting, tax-input clarification, cross-border operation clarification, attachments, official-link discovery and document/date/scope verification for a recent-policy question |
-| Browser checks | Desktop and mobile layout, waiting indicator, final answers and history restoration checked; real calculation and Chinese bold rendering verified |
+| Offline regression | 2026-10-25: 315 passed in 12.81 seconds, with two existing dependency deprecation warnings; frontend interaction, JavaScript syntax and targeted Python lint checks also passed |
+| Live model checks | Four calls on 2026-10-25: no questions in Immediate Response, two in Interactive Analysis, none after Analyze available information in Interactive/Careful Analysis; Careful Analysis produced two citations with validity still pending. Earlier eight-case evidence is retained |
+| Browser checks | On 2026-10-25, an isolated page with simulated responses at 1280×720 covered two-question options/free text, handling preference, analyze button, restored history, news and expandable citations; no policy-library entry is shown |
 
-Latest checks: initial clarification took 2.13 seconds, official-link discovery 11.16 seconds, and the complete dividend-policy answer 55.24 seconds with four search-tool calls. The previous 16.22-second evidence-gap reply did not answer the question and is not a successful speed benchmark. The regression checks retrieved official clauses and the final document name, number, execution date, rate, scope and repeal.
+The four live calls took 3.42, 7.64, 9.99 and 86.75 seconds respectively. The last used an official Ministry of Commerce republication when the original page was unavailable; publication-date and later-validity questions remained unresolved. Different tasks and modes make these observations unsuitable as a comparative performance benchmark. See the [case workflow guide](src/docs/case-workflow.md#验证).
+
+Earlier checks: initial clarification took 2.13 seconds, official-link discovery 11.16 seconds, and the complete dividend-policy answer 55.24 seconds with four search-tool calls. The previous 16.22-second evidence-gap reply did not answer the question and is not a successful speed benchmark. The regression checks retrieved official clauses and the final document name, number, execution date, rate, scope and repeal.
 
 These eight cases establish product behavior and one policy regression. The full 42-question evaluation and broader policy accuracy remain unaccepted. See the [capability roadmap](src/docs/agent-capability-roadmap.md).
 
