@@ -32,7 +32,7 @@ from src.agent.public_answer import (
 )
 from src.attachments.storage import register_session_document, reset_session_documents
 from src.config.answer_mode import AnswerMode, answer_mode, current_mode
-from src.config.product import AGENT_NAME
+from src.config.product import AGENT_NAME, requested_draft_footer
 from src.web.progress import ProgressTracker
 
 # Existing runtime run IDs and attachment-session state are process globals.
@@ -57,13 +57,16 @@ class ChatService:
             display = legacy_public_history(record['messages'])
         # Explicit allowlist; never send the raw store record to an API response.
         messages = []
+        preserve_draft_footer = False
         for item in display:
             role = item.get('role')
             if role not in {'user', 'assistant'}:
                 continue
             text = str(item.get('content') or '')
-            if role == 'assistant':
-                text = public_text(text)
+            if role == 'user':
+                preserve_draft_footer = requested_draft_footer(text)
+            else:
+                text = public_text(text, preserve_draft_footer=preserve_draft_footer)
             messages.append({
                 'role': role, 'content': text,
                 'attachments': [str(name) for name in item.get('attachments', [])]
@@ -128,6 +131,7 @@ class ChatService:
     def _answer(self, conversation_id: str, text: str, attachment_ids: list[str], *,
                 answers: list[dict], tendency: str | None, tendency_note: str | None, action: str) -> dict:
         started = time.monotonic()
+        preserve_draft_footer = requested_draft_footer(text)
         mode = current_mode()
         record = self.store.load(conversation_id)
         public = self.public_record(conversation_id)['messages']
@@ -180,7 +184,8 @@ class ChatService:
             with case_turn(state, action):
                 for frame in agent.run(model_history):
                     final_frame = frame
-            answer = completed_answer(final_frame, getattr(agent, "name", AGENT_NAME))
+            answer = completed_answer(final_frame, getattr(agent, "name", AGENT_NAME),
+                                      preserve_draft_footer=preserve_draft_footer)
         body, metadata = completed_interaction(final_frame)
         questions = ([] if mode == 'rough' or action == 'analyze_existing' else
                      normalize_clarifications(metadata.get('questions'), state['revision']))
@@ -195,7 +200,7 @@ class ChatService:
             clean_body = ('请按下方选项补充已掌握的情况，也可直接按现有信息分析。' if questions else
                           '根据现有信息，尚不足以形成确定判断。未明确的条件保留为未知，可按不同情形分析。')
         if clean_body:
-            answer = public_text(clean_body)
+            answer = public_text(clean_body, preserve_draft_footer=preserve_draft_footer)
         citations = normalize_citations(
             metadata.get('citations'), [*history, *final_frame], mode=mode, body=body,
             allowed_source_urls=submitted_source_urls(history),
@@ -205,7 +210,7 @@ class ChatService:
             allowed_source_urls=[item['url'] for item in citations],
         )
         if source_checked_body != clean_body:
-            answer = public_text(source_checked_body)
+            answer = public_text(source_checked_body, preserve_draft_footer=preserve_draft_footer)
         state['pending_questions'] = questions
         state['question_history'].extend(questions)
         state['stage'] = 'clarify' if questions else 'consolidate'

@@ -11,6 +11,7 @@ from src.config.llm import get_active_llm_config
 from . import client
 from .config import MODEL, api_key, settings
 from .narration import PROMPT, prepare_narration
+from .text import without_ai_footer
 
 _pending = OrderedDict()
 _lock = threading.Lock()
@@ -25,6 +26,9 @@ def synthesize_chunk(text, voice):
 
 def prepare(history, turn):
     source = client.final_answer(history, turn, conclusion_only=False)
+    # final_answer already removed automatic notices with the original request
+    # available. Any remaining literal tail belongs to content and stays intact.
+    preserve_draft_footer = without_ai_footer(source) != source
     config = settings()
     model = get_active_llm_config() or {}
     voice = {'reference_id': config['voice_id'], 'name': config['voice_name']}
@@ -45,7 +49,9 @@ def prepare(history, turn):
             _pending.move_to_end(key)
     if owner:
         try:
-            chunks = client.speech_chunks(prepare_narration(source))
+            chunks = client.speech_chunks(
+                prepare_narration(source, preserve_draft_footer=preserve_draft_footer),
+                preserve_draft_footer=True)
             first_audio = synthesize_chunk(chunks[0], voice)
             future.set_result((chunks, voice, first_audio))
         except Exception as error:  # noqa: BLE001 - propagate failures to all waiting callers

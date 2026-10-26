@@ -5,7 +5,7 @@ required_sections:
     description: 说明工作事项、适用地区、政策截止时间及已确认的事实。未明确涉外时默认中国内地。
   - id: conclusions
     title: 结论与建议
-    description: 结论在前，区分已有依据、条件性判断和待核实事项；咨询答复标注为“草稿，供审核”。
+    description: 结论在前，区分已有依据、条件性判断和待核实事项；不自动追加固定草稿尾注，仅在用户明确要求时保留该文字。
   - id: applicable_conditions
     title: 适用条件与材料
     description: 列出主体、业务、时间等适用条件和有依据的业务材料要求，不猜测地方受理口径。

@@ -10,6 +10,8 @@ from urllib.request import ProxyHandler, Request, build_opener
 import numpy as np
 import soundfile as sf
 
+from src.config.product import requested_draft_footer
+
 from .config import VoiceError, settings
 from .fish import FishSpeechEngine, NoRedirect
 from .text import without_ai_footer
@@ -45,7 +47,9 @@ def transcribe(path):
         raise VoiceError('ASR_UNAVAILABLE', '本机语音识别服务尚未启动，请联系系统维护人员。') from None
 
 
-def plain_text(text):
+def plain_text(text, *, preserve_draft_footer=False):
+    # Clean before removing Markdown so quoted/indented text keeps its meaning.
+    text = without_ai_footer(str(text), preserve_draft_footer=preserve_draft_footer)
     text = re.sub(r'<details\b[^>]*>.*?</details>', '', str(text), flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r'<think>.*?</think>', '', str(text), flags=re.DOTALL)
     text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
@@ -53,15 +57,16 @@ def plain_text(text):
     text = re.sub(r'https?://\S+', '', text)
     text = re.sub(r'<[^>]+>', '', text)
     text = re.sub(r'(?m)^\s*[#>]+\s*', '', text)
-    return without_ai_footer(re.sub(r'[*`_]', '', text))
+    return without_ai_footer(re.sub(r'[*`_]', '', text), preserve_draft_footer=True)
 
 
 def final_answer(history, turn, conclusion_only=True):
     """Resolve a completed turn from authoritative history, never rendered DOM."""
-    turns = []
+    turns, requests = [], []
     for message in history or []:
         if message.get('role') == 'user':
             turns.append([])
+            requests.append(message.get('content', ''))
         elif turns:
             turns[-1].append(message)
     if not isinstance(turn, int) or not 0 <= turn < len(turns):
@@ -71,7 +76,8 @@ def final_answer(history, turn, conclusion_only=True):
             or messages[-1].get('function_call') or messages[-1].get('tool_calls')
             or messages[-1].get('name') not in (None, '', '3wagent')):
         raise VoiceError('NO_REPLY', '请等待本轮答复完成后再朗读。', 422)
-    text = latest_reply(messages)
+    preserve_draft_footer = requested_draft_footer(requests[turn])
+    text = latest_reply(messages, preserve_draft_footer=preserve_draft_footer)
     if not conclusion_only:
         return text
     # Prefer an explicitly labelled conclusion. Without one, the final answer
@@ -91,16 +97,17 @@ def final_answer(history, turn, conclusion_only=True):
                     if not level and re.match(r'^\*\*[^*]+\*\*\s*$', lines[end]):
                         break
                     end += 1
-                conclusion = plain_text('\n'.join(lines[index + 1:end]))
+                conclusion = plain_text('\n'.join(lines[index + 1:end]),
+                                        preserve_draft_footer=preserve_draft_footer)
                 if conclusion:
                     text = conclusion
                     break
     return text
 
 
-def speech_chunks(text):
+def speech_chunks(text, *, preserve_draft_footer=False):
     """Keep the first sentence separate so speculative work stops there."""
-    text = plain_text(text)
+    text = plain_text(text, preserve_draft_footer=preserve_draft_footer)
     if not 1 <= len(text) <= 12000 or not any(c.isalnum() for c in text):
         raise VoiceError('INVALID_TEXT', '朗读内容须为 1–12000 字，超出时请先生成答复摘要。', 422)
     sentences = re.findall(r'[^。！？!?；;\n]+[。！？!?；;\n]*', text)
@@ -126,7 +133,11 @@ def synthesize_segments(text, rate=1.0):
         yield audio
 
 
-def latest_reply(history):
+def latest_reply(history, *, preserve_draft_footer=None):
+    if preserve_draft_footer is None:
+        request = next((item.get('content', '') for item in reversed(history or [])
+                        if item.get('role') == 'user'), '')
+        preserve_draft_footer = requested_draft_footer(request)
     for message in reversed(history or []):
         if message.get('role') == 'user':
             break
@@ -135,8 +146,9 @@ def latest_reply(history):
             content = message.get('content', '')
             if isinstance(content, list):
                 content = '\n'.join(x.get('text', '') for x in content if isinstance(x, dict))
-            if plain_text(content):
-                return plain_text(content)
+            text = plain_text(content, preserve_draft_footer=preserve_draft_footer)
+            if text:
+                return text
     raise VoiceError('NO_REPLY', '暂无可朗读的完整答复，请待答复完成后重试。', 422)
 
 

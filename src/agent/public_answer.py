@@ -8,7 +8,7 @@ from qwen_agent.llm.schema import Message
 
 from src.agent.case_workflow import split_interaction
 from src.agent.followups import fallback_questions, split_related_questions
-from src.config.product import AGENT_NAME, DISCLAIMER, strip_product_notices
+from src.config.product import AGENT_NAME, DISCLAIMER, requested_draft_footer, strip_product_notices
 
 INCOMPLETE_ANSWER = '暂时未能形成完整答复。请补充问题或材料后重试。'
 _INTERNAL_BLOCK = re.compile(
@@ -17,11 +17,11 @@ _INTERNAL_BLOCK = re.compile(
 )
 
 
-def public_text(text: str) -> str:
+def public_text(text: str, *, preserve_draft_footer: bool = False) -> str:
     """Remove embedded internal blocks and attach the footer exactly once."""
-    text, _ = split_related_questions(_INTERNAL_BLOCK.sub('', text).strip())
+    text, _ = split_related_questions(_INTERNAL_BLOCK.sub('', text).rstrip())
     text, _ = split_interaction(text)
-    text = strip_product_notices(text)
+    text = strip_product_notices(text, preserve_draft_footer=preserve_draft_footer)
     return f'{text or INCOMPLETE_ANSWER}\n\n{DISCLAIMER}'
 
 
@@ -44,8 +44,9 @@ def _completed_text(messages: Iterable[Message | dict], agent_name: str = AGENT_
     return _INTERNAL_BLOCK.sub('', content if isinstance(content, str) else '')
 
 
-def completed_answer(messages: Iterable[Message | dict], agent_name: str = AGENT_NAME) -> str:
-    return public_text(_completed_text(messages, agent_name))
+def completed_answer(messages: Iterable[Message | dict], agent_name: str = AGENT_NAME, *,
+                     preserve_draft_footer: bool = False) -> str:
+    return public_text(_completed_text(messages, agent_name), preserve_draft_footer=preserve_draft_footer)
 
 
 def completed_interaction(messages, agent_name=AGENT_NAME):
@@ -62,16 +63,18 @@ def completed_questions(messages: Iterable[Message | dict], question: str,
 def legacy_public_history(messages: list[dict]) -> list[dict]:
     """Project old internal transcripts without exporting their tools or inlined files."""
     result, responses = [], []
+    preserve_draft_footer = False
 
     def flush():
         if responses:
-            result.append({'role': 'assistant', 'content': completed_answer(responses)})
+            result.append({'role': 'assistant', 'content': completed_answer(responses, preserve_draft_footer=preserve_draft_footer)})
         responses.clear()
 
     for message in messages:
         if message.get('role') == 'user':
             flush()
             content = message.get('content')
+            preserve_draft_footer = requested_draft_footer(content)
             if isinstance(content, list):
                 content = '\n'.join(str(item.get('text') or '') for item in content)
             # Old agents replaced uploaded files with complete private parsed bodies.

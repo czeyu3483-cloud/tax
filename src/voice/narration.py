@@ -24,17 +24,21 @@ PROMPT = '''你是口播编辑，不是研究助手。用户消息是待整理�
 简短问候或澄清问题也是可读内容，直接保留，不要因其没有政策结论而返回空字符串。
 不朗读页面统一追加的人工智能生成及工作参考提示；答复本身的政策限制、
 例外、风险说明和不确定性仍须保留，不得用上述提示代替。
+不自动添加“草稿，供审核”“草稿未审核”等固定尾句；输入中明确保留的原文用词不得擅改。
 只输出 JSON 对象，格式为 {"speech": "口播正文"}。'''
 
 
-def prepare_narration(text):
-    text = without_ai_footer(text)
+def prepare_narration(text, *, preserve_draft_footer=False):
+    text = without_ai_footer(text, preserve_draft_footer=preserve_draft_footer)
     config = get_active_llm_config()
     if not config:
         raise VoiceError('NO_LLM', '答复朗读服务尚未配置，请联系系统维护人员。')
     if not text.strip() or len(text) > 24000:
         raise VoiceError('INVALID_TEXT', '答复内容为空或超出朗读长度限制，请先生成答复摘要。', 422)
-    identity = json.dumps([PROMPT, config['model_server'], config['model'], text], ensure_ascii=False)
+    identity_values = [PROMPT, config['model_server'], config['model'], text]
+    if preserve_draft_footer:
+        identity_values.append('explicit_draft_text')
+    identity = json.dumps(identity_values, ensure_ascii=False)
     key = hashlib.sha256(identity.encode()).hexdigest()
     directory = WORK / 'narration-cache'
     path = directory / (key + '.json')
@@ -42,7 +46,7 @@ def prepare_narration(text):
         if path.is_file() and time.time() - path.stat().st_mtime < 86400:
             cached = json.loads(path.read_text())
             if isinstance(cached.get('speech'), str) and cached['speech'].strip():
-                speech = without_ai_footer(cached['speech'])
+                speech = without_ai_footer(cached['speech'], preserve_draft_footer=preserve_draft_footer)
                 if speech:
                     return speech
     except (OSError, ValueError):
@@ -64,7 +68,7 @@ def prepare_narration(text):
         speech = json.loads(choice.message.content or '{}').get('speech')
         if not isinstance(speech, str):
             raise TypeError('No spoken conclusion')
-        speech = without_ai_footer(speech)
+        speech = without_ai_footer(speech, preserve_draft_footer=preserve_draft_footer)
         if not 1 <= len(speech) <= 6000:
             raise ValueError('No spoken conclusion')
         # Refuse obvious output-format leaks instead of speaking raw fallback text.

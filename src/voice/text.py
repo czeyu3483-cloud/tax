@@ -10,11 +10,11 @@ _AI_FOOTER = re.compile(
 )
 
 
-def without_ai_footer(text: str) -> str:
+def without_ai_footer(text: str, *, preserve_draft_footer: bool = False) -> str:
     """Remove only trailing product notices; retain business warnings and limits."""
-    text = text.strip()
+    text = text.rstrip()
     while text:
-        cleaned = _AI_FOOTER.sub('', strip_product_notices(text)).rstrip()
+        cleaned = _AI_FOOTER.sub('', strip_product_notices(text, preserve_draft_footer=preserve_draft_footer)).rstrip()
         if cleaned == text:
             break
         text = cleaned

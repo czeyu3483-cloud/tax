@@ -15,7 +15,7 @@ function updateModeHint() {
   }[modePicker.value];
 }
 modePicker.addEventListener('change', () => {
-  updateModeHint(); renderMessages();
+  updateModeHint(); renderMessages(false, {preserveScroll:true});
   try {localStorage.setItem('xiaochi-answer-mode', modePicker.value);} catch (_) {}
 });
 updateModeHint();
@@ -64,9 +64,112 @@ function setBusy(value) {
   $('send-button').textContent = value ? '处理中' : '提交';
   updateActionAvailability();
 }
+function resizeQuestion() {
+  const question = $('question');
+  question.style.height = 'auto';
+  question.style.height = `${Math.min(question.scrollHeight, 240)}px`;
+}
+function updateComposer() {
+  const compact = state.messages.some(item => item.role === 'assistant');
+  $('chat-form').classList.toggle('compact', compact);
+  $('question').rows = compact ? 2 : 4;
+  resizeQuestion();
+}
+function nearConversationEnd(workspace) {
+  return workspace.scrollHeight - workspace.scrollTop - workspace.clientHeight < 80;
+}
+function scrollAnswerEnd(answer, workspace = document.querySelector('.workspace')) {
+  const viewport = workspace.getBoundingClientRect();
+  const composer = document.querySelector('.composer-area') || $('chat-form');
+  const visibleBottom = Math.min(viewport.bottom, composer.getBoundingClientRect().top);
+  // Follow the currently visible text and its small action row, not later question forms.
+  const distance = answer.getBoundingClientRect().bottom + 40 - visibleBottom;
+  if (distance > 0) workspace.scrollTop += distance;
+}
+let activeAnswerReveal = null;
+function finishAnswerReveal() {
+  if (activeAnswerReveal) activeAnswerReveal.finish();
+}
+function revealAnswer(answer, follow = true) {
+  // Animate only the already completed, server-rendered answer. Never parse partial HTML.
+  const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  if (document.hidden || motion?.matches) return;
+  const textNodes = [], blocks = [];
+  let length = 0;
+  function collect(node) {
+    if (node.nodeType === 3) {
+      const characters = Array.from(node.nodeValue || '');
+      textNodes.push({node, characters, start:length}); length += characters.length;
+      return;
+    }
+    if (node !== answer && /^(P|DIV|UL|OL|LI|DL|DT|DD|H[1-6]|PRE|BLOCKQUOTE|TABLE|THEAD|TBODY|TFOOT|TR|TH|TD|HR)$/.test(node.tagName)) {
+      blocks.push({node, start:length, hidden:node.hidden});
+    }
+    for (const child of node.childNodes) collect(child);
+  }
+  collect(answer);
+  if (!length) return;
+  const workspace = document.querySelector('.workspace');
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'answer-reveal-button'; button.textContent = '立即显示';
+  button.setAttribute('aria-label', '立即显示完整答复');
+  answer.after(button);
+  answer.setAttribute('aria-busy', 'true');
+  let frame = null, stopped = false, lastTop = workspace.scrollTop;
+  const started = performance.now(), duration = Math.min(4500, Math.max(2000, length * 9));
+  function show(count) {
+    for (const {node, characters, start} of textNodes) {
+      const value = characters.slice(0, Math.max(0, count - start)).join('');
+      if (node.nodeValue !== value) node.nodeValue = value;
+    }
+    for (const block of blocks) block.node.hidden = block.hidden || count <= block.start;
+  }
+  function onScroll() {
+    if (workspace.scrollTop < lastTop - 2) follow = false;
+    else if (nearConversationEnd(workspace)) follow = true;
+    lastTop = workspace.scrollTop;
+  }
+  const reveal = {finish() {
+    if (stopped) return;
+    stopped = true; cancelAnimationFrame(frame);
+    workspace.removeEventListener('scroll', onScroll);
+    document.removeEventListener('visibilitychange', onVisibility);
+    motion?.removeEventListener?.('change', onMotion);
+    show(length);
+    for (const block of blocks) block.node.hidden = block.hidden;
+    answer.setAttribute('aria-busy', 'false'); button.hidden = true;
+    if (activeAnswerReveal === reveal) activeAnswerReveal = null;
+  }};
+  function onVisibility() {if (document.hidden) reveal.finish();}
+  function onMotion(event) {if (event.matches) reveal.finish();}
+  document.addEventListener('visibilitychange', onVisibility);
+  motion?.addEventListener?.('change', onMotion);
+  activeAnswerReveal = reveal;
+  button.addEventListener('click', () => {
+    const shouldFollow = follow;
+    reveal.finish();
+    if (shouldFollow) scrollAnswerEnd(answer, workspace);
+  });
+  show(0);
+  if (follow) scrollAnswerEnd(answer, workspace);
+  lastTop = workspace.scrollTop;
+  workspace.addEventListener('scroll', onScroll, {passive:true});
+  function advance(now) {
+    if (stopped || activeAnswerReveal !== reveal) return;
+    const fraction = Math.min(1, (now - started) / duration);
+    show(Math.ceil(length * fraction));
+    if (follow) {scrollAnswerEnd(answer, workspace); lastTop = workspace.scrollTop;}
+    if (fraction >= 1) reveal.finish();
+    else frame = requestAnimationFrame(advance);
+  }
+  frame = requestAnimationFrame(advance);
+  return true;
+}
+let conversationScrollFrame = null;
 function scrollEnd() {
   const workspace = document.querySelector('.workspace');
-  requestAnimationFrame(() => {workspace.scrollTop = workspace.scrollHeight;});
+  cancelAnimationFrame(conversationScrollFrame);
+  conversationScrollFrame = requestAnimationFrame(() => {conversationScrollFrame = null; workspace.scrollTop = workspace.scrollHeight;});
 }
 function closeMenu() { $('sidebar').classList.remove('open'); $('scrim').classList.remove('open'); $('menu-button').setAttribute('aria-expanded', 'false'); }
 function assistantLabel(item = {}) {
@@ -77,7 +180,12 @@ function assistantLabel(item = {}) {
   if (Number.isFinite(item.elapsed_seconds)) note.textContent += ` · ${item.elapsed_seconds.toFixed(1)}秒`;
   label.append(name, note); return label;
 }
-function renderMessages(waiting = false) {
+function renderMessages(waiting = false, {revealIndex = -1, preserveScroll = false} = {}) {
+  const workspace = document.querySelector('.workspace');
+  const follow = nearConversationEnd(workspace), previousTop = workspace.scrollTop;
+  cancelAnimationFrame(conversationScrollFrame); conversationScrollFrame = null;
+  finishAnswerReveal();
+  let newAnswer = null;
   $('messages').replaceChildren();
   $('welcome').hidden = state.messages.length > 0 || waiting;
   let voiceTurn = -1;
@@ -94,6 +202,7 @@ function renderMessages(waiting = false) {
       if (item.html) answer.innerHTML = item.html; else answer.textContent = item.content;
       for (const link of answer.querySelectorAll('a')) {const href = safeHref(link.getAttribute('href')); if (href) link.href = href; else link.removeAttribute('href'); link.target = '_blank'; link.rel = 'noopener noreferrer';}
       message.append(answer);
+      if (messageIndex === revealIndex) newAnswer = answer;
       const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'copy-button'; copy.textContent = '复制答复';
       copy.addEventListener('click', async () => {try {await navigator.clipboard.writeText(item.content); copy.textContent = '已复制';} catch (_) {showError('浏览器未允许复制，请选择答复文字手动复制。');}});
       message.append(copy, voiceButton(state.id, voiceTurn));
@@ -114,8 +223,12 @@ function renderMessages(waiting = false) {
     elapsed.textContent = '已用时 0 秒';
     text.append(phase, elapsed); article.append(text); $('messages').append(article);
   }
-  updateActionAvailability(); scrollEnd();
+  updateActionAvailability(); updateComposer();
+  if (preserveScroll) workspace.scrollTop = previousTop;
+  if (newAnswer) {if (!revealAnswer(newAnswer, follow) && follow) scrollAnswerEnd(newAnswer, workspace);}
+  else if (!preserveScroll) scrollEnd();
 }
+
 function watchProgress(conversationId, requestId) {
   let stopped = false, polling = false;
   const started = performance.now();
@@ -166,6 +279,7 @@ async function refreshHistory() {
 }
 async function selectConversation(id) {
   if (state.busy) return;
+  finishAnswerReveal();
   hideHistoryNotice();
   stopVoice();
   setBusy(true); showError();
@@ -190,7 +304,9 @@ async function ensureConversation() {
   state.creating = creating; return creating;
 }
 function resetConversation() {
+  finishAnswerReveal();
   hideHistoryNotice();
+  $('tendency-control').open = false;
   stopVoice();
   stopNewsPolling(); state.epoch++; state.creating = null; state.id = null; state.messages = []; state.attachments = []; state.answerDrafts = {}; state.caseState = null; syncTendency(); renderNews(null); localStorage.removeItem('xiaochi-conversation');
   $('question').value = ''; $('question').style.height = 'auto';
@@ -244,7 +360,7 @@ $('file-input').addEventListener('change', async () => {
   } catch (error) {showError(error.message);} finally {setBusy(false);}
 });
 $('question').addEventListener('keydown', event => {if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {event.preventDefault(); $('chat-form').requestSubmit();}});
-$('question').addEventListener('input', () => {updateActionAvailability();$('question').style.height = 'auto'; $('question').style.height = `${Math.min($('question').scrollHeight, 240)}px`;});
+$('question').addEventListener('input', () => {updateActionAvailability(); resizeQuestion();});
 $('chat-form').addEventListener('submit', event => {event.preventDefault(); submitConsultation();});
 $('analyze-existing').addEventListener('click', () => submitConsultation('analyze_existing'));
 async function submitConsultation(action = 'respond') {
@@ -281,13 +397,14 @@ async function submitConsultation(action = 'respond') {
     committed = true;
     state.caseState = response.case_state || state.caseState;
     state.messages.push({role:'assistant', content:response.answer, html:response.answer_html, clarification_questions:response.clarification_questions, citations:response.citations, mode:response.mode, elapsed_seconds:response.elapsed_seconds});
-    state.answerDrafts = {}; state.attachments = []; syncTendency(); renderAttachments(); renderMessages(); startNewsPolling(true);
+    state.answerDrafts = {}; state.attachments = []; syncTendency(); $('tendency-control').open = false; renderAttachments();
+    renderMessages(false, {revealIndex:state.messages.length - 1, preserveScroll:true}); startNewsPolling(true);
     await refreshHistory();
   } catch (error) {
     if (!committed) {state.messages = previous; $('question').value = draft; $('question').style.height = draftHeight;}
     renderMessages(); showError(error.message);
   }
-  finally {stopProgress(); setBusy(false); $('question').focus();}
+  finally {stopProgress(); setBusy(false); $('question').focus({preventScroll:true});}
 }
 function useQuestion(text) {
   if (state.busy) return;

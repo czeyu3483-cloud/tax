@@ -322,3 +322,16 @@ button, .resource-links a, .external-arrow, .composer, .history-row {
 .news-date-evidence { margin: 7px 0; font-size: 10px; color: #c3d6ef; line-height: 1.8; }
 .news-date-evidence summary { cursor: pointer; }
 .news-date-evidence p { white-space: pre-wrap; }
+
+/* Keep follow-up input compact; expanding text still grows up to 240px. */
+.composer.compact { padding: 12px 16px 10px; }
+.composer.compact textarea { min-height: 52px; }
+.composer.compact .answer-mode-row { padding-bottom: 6px; }
+.composer.compact .tendency-control { margin-bottom: 8px; padding: 6px 0; }
+.composer.compact .composer-toolbar { margin-top: 6px; }
+.answer-reveal-button { display: inline-block; margin: 0 8px 8px 0; padding: 3px 0; border: 0; background: none; color: var(--muted); font-size: 12px; cursor: pointer; }
+.answer-reveal-button:hover { color: var(--primary); }
+.answer-reveal-button:focus-visible { outline: 2px solid #6c99d0; outline-offset: 3px; }
+@media (max-width: 760px) {
+  .composer.compact { padding: 10px 12px; }
+}

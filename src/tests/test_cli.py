@@ -105,3 +105,17 @@ def test_cli_recovers_after_a_failed_turn():
     assert "恢复成功" in output.getvalue()
     assert len(agent.calls[1]) == 1
     assert agent.calls[1][0].content == "重试问题"
+
+
+def test_cli_removes_fixed_draft_tail_unless_explicitly_requested():
+    class DraftAgent(FakeAgent):
+        def run(self, history):
+            yield [Message(ASSISTANT, "条件仍待核实。\n\n草稿，供审核。", name=self.name)]
+
+    for question, keep in [("请分析", False), ("不要添加草稿，供审核", False),
+                           ("请在末尾原样保留草稿，供审核", True)]:
+        output = StringIO()
+        run_cli(DraftAgent(), input_stream=StringIO(question+"\n/exit\n"),
+                output_stream=output, error_stream=StringIO())
+        assert ("草稿，供审核" in output.getvalue()) is keep
+        assert "条件仍待核实" in output.getvalue()

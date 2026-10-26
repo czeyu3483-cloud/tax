@@ -10,7 +10,7 @@ from qwen_agent.llm.schema import USER, Message
 from src.agent.main_agent import AgentMode, MainAgent
 from src.agent.public_answer import completed_answer
 from src.config.llm import load_llm_config
-from src.config.product import AGENT_NAME
+from src.config.product import AGENT_NAME, requested_draft_footer
 
 EXIT_COMMANDS = {"/exit", "/quit"}
 
@@ -76,7 +76,8 @@ def run_cli(
 
         if responses:
             history.extend(responses)
-        answer = completed_answer(responses, getattr(agent, 'name', AGENT_NAME))
+        answer = completed_answer(responses, getattr(agent, 'name', AGENT_NAME),
+                                  preserve_draft_footer=requested_draft_footer(question))
         _write(output_stream, f"小弛> {answer}\n")
 
 
