@@ -76,6 +76,15 @@ h1 { margin: 0 0 13px; color: #234e7d; font-size: 25px; font-weight: 600; line-h
 .composer-area { width: min(860px, 100%); margin: 18px auto 0; padding: 14px 0 12px; flex-shrink: 0; position: sticky; bottom: 0; background: #f5f9fe; }
 .workspace:has(.welcome:not([hidden])) .composer-area { position: static; }
 .composer { padding: 18px 18px 14px; border: 1px solid #c8d7e8; border-radius: 8px; background: #fff; box-shadow: 0 3px 12px #244c7508; }
+.composer-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.composer-heading > span { min-width: 0; line-height: 1.6; }
+.composer-toggle { flex-shrink: 0; padding: 4px 8px; border: 1px solid #d7e3f1; border-radius: 5px; background: #f5f9fe; color: var(--primary); font-size: 12px; line-height: 1.6; }
+.composer-toggle:hover { background: #eaf2fc; }
+.composer-toggle::after { content: '⌄'; display: inline-block; margin-left: 6px; }
+.composer-toggle[aria-expanded="false"]::after { transform: rotate(180deg); }
+.composer.collapsed { padding: 10px 14px; }
+.composer.collapsed .composer-heading { margin-bottom: 0; }
+#composer-body[hidden] { display: none; }
 .composer:focus-within { border-color: #5687c8; box-shadow: 0 0 0 3px #235dab0d, 0 6px 20px #235dab0c; }
 textarea { display: block; width: 100%; min-height: 112px; max-height: 240px; padding: 0; border: none; outline: none; resize: none; background: transparent; font-size: 14px; line-height: 1.8; color: var(--text); }
 textarea::placeholder { color: #6e7781; }

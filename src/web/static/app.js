@@ -1,6 +1,6 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
-const state = {id: null, messages: [], attachments: [], busy: false, caseState: null, answerDrafts: {}, tendencyDirty: false, epoch: 0, creating: null};
+const state = {id: null, messages: [], attachments: [], busy: false, caseState: null, answerDrafts: {}, tendencyDirty: false, epoch: 0, creating: null, composerCollapsed: false};
 const modePicker = $('answer-mode');
 const modeNames = {rough:'即时答复', interactive:'互动研判', precise:'审慎研判'};
 try {
@@ -62,9 +62,11 @@ function setBusy(value) {
   $('question').readOnly = value;
   modePicker.disabled = value;
   $('send-button').textContent = value ? '处理中' : '提交';
-  updateActionAvailability();
+  $('composer-toggle').disabled = false;
+  updateActionAvailability(); updateComposerSummary();
 }
 function resizeQuestion() {
+  if (state.composerCollapsed) return;
   const question = $('question');
   question.style.height = 'auto';
   question.style.height = `${Math.min(question.scrollHeight, 240)}px`;
@@ -73,8 +75,24 @@ function updateComposer() {
   const compact = state.messages.some(item => item.role === 'assistant');
   $('chat-form').classList.toggle('compact', compact);
   $('question').rows = compact ? 2 : 4;
-  resizeQuestion();
+  resizeQuestion(); updateComposerSummary();
 }
+function updateComposerSummary() {
+  const pending = $('question').value.trim() || state.attachments.length || state.tendencyDirty || submittedAnswers().length;
+  $('composer-summary').textContent = state.composerCollapsed
+    ? `${modeNames[modePicker.value]} · ${state.busy ? '正在处理' : pending ? '未提交内容已保留' : '展开后可继续补充'}`
+    : '咨询输入';
+}
+function setComposerCollapsed(collapsed, focus = false) {
+  state.composerCollapsed = collapsed;
+  $('composer-body').hidden = collapsed;
+  $('chat-form').classList.toggle('collapsed', collapsed);
+  $('composer-toggle').textContent = collapsed ? '展开输入区' : '收起输入区';
+  $('composer-toggle').setAttribute('aria-expanded', String(!collapsed));
+  updateComposer();
+  if (focus) (collapsed ? $('composer-toggle') : $('question')).focus({preventScroll:true});
+}
+$('composer-toggle').addEventListener('click', () => setComposerCollapsed(!state.composerCollapsed, true));
 function nearConversationEnd(workspace) {
   return workspace.scrollHeight - workspace.scrollTop - workspace.clientHeight < 80;
 }
@@ -310,6 +328,7 @@ function resetConversation() {
   stopVoice();
   stopNewsPolling(); state.epoch++; state.creating = null; state.id = null; state.messages = []; state.attachments = []; state.answerDrafts = {}; state.caseState = null; syncTendency(); renderNews(null); localStorage.removeItem('xiaochi-conversation');
   $('question').value = ''; $('question').style.height = 'auto';
+  setComposerCollapsed(false);
   showError(); renderAttachments(); renderMessages(); closeMenu();
 }
 $('new-chat').addEventListener('click', () => {
@@ -404,10 +423,11 @@ async function submitConsultation(action = 'respond') {
     if (!committed) {state.messages = previous; $('question').value = draft; $('question').style.height = draftHeight;}
     renderMessages(); showError(error.message);
   }
-  finally {stopProgress(); setBusy(false); $('question').focus({preventScroll:true});}
+  finally {stopProgress(); setBusy(false); if (!state.composerCollapsed) $('question').focus({preventScroll:true});}
 }
 function useQuestion(text) {
   if (state.busy) return;
+  setComposerCollapsed(false);
   $('question').value = text;
   $('question').dispatchEvent(new Event('input'));
   $('question').focus();
@@ -535,6 +555,7 @@ function renderClarifications(questions, active) {
       optionButtons.forEach(button => button.setAttribute('aria-pressed', String(button.textContent === draft.selected_option && !draft.skipped)));
       skip.textContent = draft.skipped ? '已选择跳过 · 撤销' : '暂不补充此项'; skip.setAttribute('aria-pressed', String(draft.skipped));
       input.disabled = state.busy || draft.skipped; input.dataset.skipped = String(draft.skipped);
+      updateComposerSummary();
     }
     sync(); field.append(choices, input, skip); panel.append(field);
   }

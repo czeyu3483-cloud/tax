@@ -4,6 +4,8 @@
 
 [English](README.md) · [运行与配置](src/README.md) · [架构说明](src/docs/architecture.md) · [能力路线图](src/docs/agent-capability-roadmap.md)
 
+本机使用见[简明运行指南](简明运行指南.txt)，新电脑可将[异机部署提示词](异机部署提示词.txt)交给当地 AI 协助安装。
+
 ## 主要功能
 
 ### 研判模式与案例交互
@@ -39,7 +41,7 @@ HTTP 消息请求支持 `mode: "rough" | "interactive" | "precise"`，省略时�
 - 阶段进度：处理中显示“小弛正在检索政策资料……”等实际阶段及“已用时 xx 秒”，不展示思考正文或工具参数。
 - 发送体验：提交后立即清空输入框；发送失败时恢复原文与换行，方便重试。
 
-输入框已扩大，移除输入框上方标题及底部重复提示；每条最终答复仍由程序统一追加：
+已有答复后输入区自动采用紧凑布局，并可随时收起或展开；收起保留当前页面未提交的文字、材料和处理倾向，不会自动发送或保存到历史。新建咨询恢复展开，快捷事项会展开并填入输入框。新答复逐步显示，支持立即显示全文；历史答复不重播。每条最终答复仍由程序统一追加：
 
 > 本内容由人工智能生成，仅供工作参考，不代表主管部门意见。政策适用及业务办理，请以现行有效规定和主管部门确认意见为准。
 
@@ -83,7 +85,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ```bash
 git --version
 uv --version
-git clone https://github.com/SegemiPL/xiaochi.git xiaochi-agent
+git clone https://github.com/czeyu3483-cloud/tax.git xiaochi-agent
 cd xiaochi-agent
 uv python install 3.12
 uv sync --project src --python 3.12 --locked
@@ -323,7 +325,7 @@ ssh -N -L 8080:127.0.0.1:8000 your-user@your-server
 ```powershell
 winget install --id=astral-sh.uv -e
 # 安装后重新打开 PowerShell
-git clone https://github.com/SegemiPL/xiaochi.git xiaochi-agent
+git clone https://github.com/czeyu3483-cloud/tax.git xiaochi-agent
 cd xiaochi-agent
 uv python install 3.12
 uv sync --project src --python 3.12 --locked

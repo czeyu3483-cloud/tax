@@ -73,6 +73,11 @@
             <span>咨询记录已删除</span><button type="button" id="undo-delete">撤销</button>
           </div>
           <form class="composer" id="chat-form">
+            <div class="composer-heading">
+              <span id="composer-summary">咨询输入</span>
+              <button type="button" class="composer-toggle" id="composer-toggle" aria-expanded="true" aria-controls="composer-body">收起输入区</button>
+            </div>
+            <div id="composer-body">
             <div class="answer-mode-row">
               <label for="answer-mode">答复方式</label>
               <select id="answer-mode" aria-describedby="answer-mode-hint">
@@ -104,6 +109,7 @@
               <input type="file" id="file-input" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.csv,.tsv,.txt,.md,.markdown,.yaml,.yml" multiple hidden>
               <span class="input-hint">Enter 提交 · Shift + Enter 换行</span>
               <button class="send-button" id="send-button" type="submit" aria-label="提交咨询">提交</button>
+            </div>
             </div>
           </form>
         </div>

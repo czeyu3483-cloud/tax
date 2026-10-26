@@ -42,7 +42,7 @@ function harness(storedMode, {reducedMotion = false} = {}) {
   function ancestor(node,name){while(node.parent){node=node.parent;if(node.className.split(' ').includes(name))return true;}return false;}
   const root=new Element('body'), nodes={};
   for(const [,id] of html.matchAll(/id="([^"]+)"/g)){const node=new Element();node.id=id;nodes[id]=node;root.append(node);}
-  for(const id of ['analyze-existing','news-refresh','send-button','new-chat','mic-button','attach-button'])nodes[id].tagName='BUTTON';
+  for(const id of ['composer-toggle','analyze-existing','news-refresh','send-button','new-chat','mic-button','attach-button'])nodes[id].tagName='BUTTON';
   for(const id of ['news-category','news-domain','news-region','news-period'])nodes[id].value='all';
   const workspace=new Element();workspace.className='workspace';workspace.rect={top:0,bottom:600,height:600};nodes['chat-form'].rect={top:400,bottom:600,height:200};root.append(workspace);
   const document={
@@ -156,6 +156,61 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
   assert.ok(h.nodes.question.value.includes('https://www.safe.gov.cn/future'));
   assert.equal(h.nodes['answer-mode'].value,'interactive','news review does not silently change mode');
   assert.ok(h.root.querySelectorAll('.news-date-evidence').length);
+  // Collapse is presentation-only: keep drafts, attachments and clarification choices.
+  h=harness();seed(h);
+  h.nodes.question.value='尚未提交的情况\n下一行';
+  h.nodes.tendency.value='oppose';h.nodes.tendency.dispatchEvent({type:'change'});
+  h.nodes['tendency-note'].value='需核对用途';
+  await h.root.querySelectorAll('.clarification-option')[0].click();
+  h.run("state.attachments=[{id:'file1',name:'说明.txt'}];renderAttachments();");
+  await h.nodes['composer-toggle'].click();
+  assert.equal(h.nodes['composer-body'].hidden,true);
+  assert.equal(h.nodes['composer-toggle'].getAttribute('aria-expanded'),'false');
+  assert.ok(h.nodes['composer-summary'].textContent.includes('未提交内容已保留'));
+  assert.equal(h.calls.length,0,'folding never submits anything');
+  h.nodes['answer-mode'].value='precise';h.nodes['answer-mode'].dispatchEvent({type:'change'});
+  assert.equal(h.nodes['composer-body'].hidden,true,'rerender preserves manual folding');
+  assert.ok(h.nodes['composer-summary'].textContent.startsWith('审慎研判'));
+  await h.nodes['composer-toggle'].click();
+  assert.equal(h.nodes['composer-body'].hidden,false);
+  assert.equal(h.nodes.question.value,'尚未提交的情况\n下一行');
+  assert.equal(h.nodes.tendency.value,'oppose');assert.equal(h.nodes['tendency-note'].value,'需核对用途');
+  assert.equal(h.run('state.attachments.length'),1);
+  assert.equal(h.run('state.answerDrafts.r1q1.selected_option'),'企业');
+  assert.equal(h.nodes.question.focusOptions.preventScroll,true);
+  h.run('setBusy(true)');
+  assert.equal(h.nodes['composer-toggle'].disabled,false,'folding stays available while generating');
+  await h.nodes['composer-toggle'].click();
+  assert.equal(h.nodes['composer-body'].hidden,true);
+  assert.ok(h.nodes['composer-summary'].textContent.includes('正在处理'));
+  h.run('setBusy(false)');
+  h.respond(async url=>{if(url.endsWith('/messages'))throw new Error('offline');return {ok:true,json:async()=>({items:[],status:{running:false}})};});
+  await h.run("submitConsultation('analyze_existing')");
+  assert.equal(h.nodes['composer-body'].hidden,true,'failed submission does not undo manual folding');
+  assert.equal(h.nodes.error.hidden,false,'errors stay outside the folded panel');
+  assert.equal(h.nodes.question.value,'尚未提交的情况\n下一行');
+  assert.equal(h.run('state.attachments.length'),1);
+  h.run("useQuestion('快捷事项')");
+  assert.equal(h.nodes['composer-body'].hidden,false,'quick questions reopen their input');
+  assert.equal(h.nodes.question.value,'快捷事项');
+  await h.nodes['composer-toggle'].click();h.run('resetConversation()');
+  assert.equal(h.nodes['composer-body'].hidden,false,'new conversations start expanded');
+  assert.equal(h.nodes.question.value,'');
+
+  h=harness();seed(h);
+  await h.nodes['composer-toggle'].click();
+  await h.root.querySelectorAll('.clarification-option')[0].click();
+  assert.ok(h.nodes['composer-summary'].textContent.includes('未提交内容已保留'));
+  h.nodes.question.value='按现有情况分析';
+  h.nodes.question.focusOptions=undefined;
+  h.respond(async url=>({ok:true,json:async()=>url.endsWith('/messages')?answer:url==='/api/conversations'?{conversations:[]}:{items:[],status:{running:false}}}));
+  await h.run("submitConsultation('analyze_existing')");
+  assert.equal(h.nodes['composer-body'].hidden,true,'successful analysis stays collapsed');
+  assert.equal(h.nodes.question.focusOptions,undefined,'do not focus a hidden input after success');
+  assert.equal(h.nodes.question.value,'');
+  assert.ok(h.nodes['composer-summary'].textContent.includes('展开后可继续补充'));
+  assert.equal(JSON.parse(h.calls.find(x=>x.url.endsWith('/messages')).options.body).message,'按现有情况分析');
+
   // Follow-up composer remains small even when focus returns after success.
   h=harness();h.run('renderMessages()');
   assert.equal(h.nodes['chat-form'].classList.contains('compact'),false);
@@ -229,5 +284,5 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
   assert.equal(h.workspace.scrollTop,1400,'reduced motion must not jump past the answer to later questions');
   h.run("const visibleAnswer=$('messages').querySelectorAll('.answer').at(-1);visibleAnswer.rect={top:300,bottom:700,height:400};scrollAnswerEnd(visibleAnswer);");
   assert.equal(h.workspace.scrollTop,1740,'full answers use the same text-end anchor');
-  console.log('Frontend interaction checks passed: existing case flow; compact composer, preserved tendency, progressive final text, full copy, immediate reveal, Markdown blocks, manual scroll, cancellation, reduced motion.');
+  console.log('Frontend interaction checks passed: existing case flow; compact/collapsible composer, preserved drafts and tendency, progressive final text, full copy, immediate reveal, Markdown blocks, manual scroll, cancellation, reduced motion.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

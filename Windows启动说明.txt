@@ -1,4 +1,5 @@
 小弛 Windows 使用说明
+简明操作见同目录“简明运行指南.txt”；新电脑部署见“异机部署提示词.txt”。
 
 启动
 1. 双击本目录的 XiaochiLauncher.exe。
