@@ -87,7 +87,9 @@ function setComposerCollapsed(collapsed, focus = false) {
   state.composerCollapsed = collapsed;
   $('composer-body').hidden = collapsed;
   $('chat-form').classList.toggle('collapsed', collapsed);
-  $('composer-toggle').textContent = collapsed ? '展开输入区' : '收起输入区';
+  const label = collapsed ? '展开输入区' : '收起输入区';
+  $('composer-toggle').setAttribute('aria-label', label);
+  $('composer-toggle').setAttribute('title', label);
   $('composer-toggle').setAttribute('aria-expanded', String(!collapsed));
   updateComposer();
   if (focus) (collapsed ? $('composer-toggle') : $('question')).focus({preventScroll:true});

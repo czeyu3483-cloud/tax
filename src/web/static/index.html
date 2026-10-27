@@ -73,43 +73,41 @@
             <span>咨询记录已删除</span><button type="button" id="undo-delete">撤销</button>
           </div>
           <form class="composer" id="chat-form">
-            <div class="composer-heading">
-              <span id="composer-summary">咨询输入</span>
-              <button type="button" class="composer-toggle" id="composer-toggle" aria-expanded="true" aria-controls="composer-body">收起输入区</button>
-            </div>
+            <span class="sr-only" id="composer-summary">咨询输入</span>
+            <button type="button" class="composer-toggle" id="composer-toggle" aria-label="收起输入区" title="收起输入区" aria-expanded="true" aria-controls="composer-body" aria-describedby="composer-summary"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
             <div id="composer-body">
-            <div class="answer-mode-row">
-              <label for="answer-mode">答复方式</label>
-              <select id="answer-mode" aria-describedby="answer-mode-hint">
-                <option value="rough">即时答复</option>
-                <option value="interactive" selected>互动研判</option>
-                <option value="precise">审慎研判</option>
-              </select>
-              <span id="answer-mode-hint">逐步补充事实与疑点，不逐条核验政策依据</span>
-            </div>
-            <details class="tendency-control" id="tendency-control">
-              <summary>初步处理倾向 <span>选填，不预设结论</span></summary>
-              <label for="tendency">目前倾向</label>
-              <select id="tendency">
-                <option value="">尚未填写（可选）</option>
-                <option value="oppose">倾向不予支持，希望明确依据</option>
-                <option value="support">倾向予以支持，希望明确依据</option>
-                <option value="undecided">尚无明确倾向，希望综合研判</option>
-                <option value="custom">自行说明处理方向</option>
-              </select>
-              <label class="sr-only" for="tendency-note">处理倾向补充说明</label>
-              <input id="tendency-note" type="text" maxlength="500" placeholder="可补充具体处理方向及理由" hidden>
-            </details>
-            <div class="attachment-list" id="attachments"></div>
-            <label class="sr-only" for="question">请输入您的业务问题</label>
-            <textarea id="question" rows="4" placeholder="请输入咨询事项，并说明适用地区、业务所属期及相关事实…" maxlength="20000"></textarea>
-            <div class="composer-toolbar">
-              <button class="voice-icon" type="button" id="mic-button" aria-label="语音输入" title="语音输入"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0014 0v-2M12 19v3m-4 0h8"/></svg></button>
-              <button class="attach-button" type="button" id="attach-button" aria-label="上传附件"><span>＋</span> 上传材料</button>
-              <input type="file" id="file-input" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.csv,.tsv,.txt,.md,.markdown,.yaml,.yml" multiple hidden>
-              <span class="input-hint">Enter 提交 · Shift + Enter 换行</span>
-              <button class="send-button" id="send-button" type="submit" aria-label="提交咨询">提交</button>
-            </div>
+              <div class="answer-mode-row">
+                <label for="answer-mode">答复方式</label>
+                <select id="answer-mode" aria-describedby="answer-mode-hint">
+                  <option value="rough">即时答复</option>
+                  <option value="interactive" selected>互动研判</option>
+                  <option value="precise">审慎研判</option>
+                </select>
+                <span id="answer-mode-hint">逐步补充事实与疑点，不逐条核验政策依据</span>
+              </div>
+              <details class="tendency-control" id="tendency-control">
+                <summary>初步处理倾向 <span>选填，不预设结论</span></summary>
+                <label for="tendency">目前倾向</label>
+                <select id="tendency">
+                  <option value="">尚未填写（可选）</option>
+                  <option value="oppose">倾向不予支持，希望明确依据</option>
+                  <option value="support">倾向予以支持，希望明确依据</option>
+                  <option value="undecided">尚无明确倾向，希望综合研判</option>
+                  <option value="custom">自行说明处理方向</option>
+                </select>
+                <label class="sr-only" for="tendency-note">处理倾向补充说明</label>
+                <input id="tendency-note" type="text" maxlength="500" placeholder="可补充具体处理方向及理由" hidden>
+              </details>
+              <div class="attachment-list" id="attachments"></div>
+              <label class="sr-only" for="question">请输入您的业务问题</label>
+              <textarea id="question" rows="4" placeholder="请输入咨询事项，并说明适用地区、业务所属期及相关事实…" maxlength="20000"></textarea>
+              <div class="composer-toolbar">
+                <button class="voice-icon" type="button" id="mic-button" aria-label="语音输入" title="语音输入"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0014 0v-2M12 19v3m-4 0h8"/></svg></button>
+                <button class="attach-button" type="button" id="attach-button" aria-label="上传附件"><span>＋</span> 上传材料</button>
+                <input type="file" id="file-input" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.csv,.tsv,.txt,.md,.markdown,.yaml,.yml" multiple hidden>
+                <span class="input-hint">Enter 提交 · Shift + Enter 换行</span>
+                <button class="send-button" id="send-button" type="submit" aria-label="提交咨询">提交</button>
+              </div>
             </div>
           </form>
         </div>

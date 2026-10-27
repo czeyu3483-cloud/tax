@@ -108,6 +108,8 @@ def test_lightweight_agent_has_no_specialist_and_does_not_mutate_config(monkeypa
     assert captured['function_list'] == ['AttachmentReadTool', 'WebSearchTool', 'WriteResult']
     assert captured['llm']['generate_cfg']['reasoning_effort'] == 'low'
     assert config['generate_cfg'] == {}
+    from src.config.product import LANGUAGE_STYLE
+    assert LANGUAGE_STYLE in captured['system_message'], 'Lightweight modes must retain the shared regulatory style'
     assert label in captured['system_message']
     assert '<case_interaction>' in captured['system_message']
     assert 'CASE_CONTEXT_MARKER' in captured['system_message']
